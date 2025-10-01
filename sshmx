@@ -278,16 +278,22 @@ else
     USE_CHROMATERM=true
 fi
 
-# Tmux session name
-TMUX_SESSION="sshmx"
+# Determine tmux session name
+if [[ -n "$TMUX" ]]; then
+    TMUX_SESSION=$(tmux display-message -p '#S')
+    echo "Running inside tmux session '$TMUX_SESSION'. New connections will add windows to this session."
+else
+    TMUX_SESSION="sshmx"
+    echo "Running outside tmux. Using dedicated session '$TMUX_SESSION'."
+fi
 
 # Function to check if tmux session exists
 session_exists() {
     tmux has-session -t "$TMUX_SESSION" 2>/dev/null
 }
 
-# Create tmux session if it doesn't exist
-if ! session_exists; then
+# Create tmux session if it doesn't exist (only if not in tmux)
+if [[ -z "$TMUX" ]] && ! session_exists; then
     tmux new-session -d -s "$TMUX_SESSION"
 fi
 
@@ -409,8 +415,12 @@ EOF
     if [[ "$USE_CHROMATERM" == true ]]; then
         ssh_cmd="ct $ssh_cmd"
     fi
+
+    # Create new window in the appropriate session
     tmux new-window -t "$TMUX_SESSION" -n "$sel" "$ssh_cmd"
 done
 
-# Attach to the tmux session
-tmux attach-session -t "$TMUX_SESSION"
+# Attach to the tmux session if not already in tmux
+if [[ -z "$TMUX" ]]; then
+    tmux attach-session -t "$TMUX_SESSION"
+fi
