@@ -217,74 +217,81 @@ fi
 # Get list of session names (keys from JSON)
 session_names=$(jq -r 'keys[]' "$SESSIONS_FILE")
 
-# Select session using fzf
-selected=$(echo "$session_names" | fzf --prompt="Select SSH session: " --height=20)
+# Select sessions using fzf with multi-select
+selected=$(echo "$session_names" | fzf --multi --prompt="Select SSH sessions: " --height=20)
 
 if [[ -z "$selected" ]]; then
     echo "No session selected."
     exit 0
 fi
 
-# Extract user, host, port, key, and password from JSON
-user=$(jq -r --arg key "$selected" '.[$key].user // empty' "$SESSIONS_FILE")
-host=$(jq -r --arg key "$selected" '.[$key].host // empty' "$SESSIONS_FILE")
-port=$(jq -r --arg key "$selected" '.[$key].port // 22' "$SESSIONS_FILE")
-key=$(jq -r --arg key "$selected" '.[$key].key // empty' "$SESSIONS_FILE")
-password=$(jq -r --arg key "$selected" '.[$key].password // empty' "$SESSIONS_FILE")
+# Process each selected session
+echo "$selected" | while read -r sel; do
+    if [[ -z "$sel" ]]; then
+        continue
+    fi
 
-# Expand key path if it contains ~
-if [[ -n "$key" && "$key" == ~* ]]; then
-    key=$(eval echo "$key")
-fi
+    # Extract user, host, port, key, and password from JSON for this session
+    user=$(jq -r --arg key "$sel" '.[$key].user // empty' "$SESSIONS_FILE")
+    host=$(jq -r --arg key "$sel" '.[$key].host // empty' "$SESSIONS_FILE")
+    port=$(jq -r --arg key "$sel" '.[$key].port // 22' "$SESSIONS_FILE")
+    key=$(jq -r --arg key "$sel" '.[$key].key // empty' "$SESSIONS_FILE")
+    password=$(jq -r --arg key "$sel" '.[$key].password // empty' "$SESSIONS_FILE")
 
-# Resolve host to IP if it's a hostname (not already an IP)
-connect_host="$host"
-if [[ ! "$host" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    if command -v getent &> /dev/null; then
-        resolved_ip=$(getent hosts "$host" | awk '{print $1}' | head -n1)
-        if [[ -n "$resolved_ip" && "$resolved_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            connect_host="$resolved_ip"
-            echo "Resolved '$host' to IP: $connect_host"
+    # Expand key path if it contains ~
+    if [[ -n "$key" && "$key" == ~* ]]; then
+        key=$(eval echo "$key")
+    fi
+
+    # Resolve host to IP if it's a hostname (not already an IP)
+    connect_host="$host"
+    if [[ ! "$host" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        if command -v getent &> /dev/null; then
+            resolved_ip=$(getent hosts "$host" | awk '{print $1}' | head -n1)
+            if [[ -n "$resolved_ip" && "$resolved_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                connect_host="$resolved_ip"
+                echo "Resolved '$host' to IP: $connect_host"
+            else
+                echo "Warning: Could not resolve '$host' to IP, using hostname."
+            fi
         else
-            echo "Warning: Could not resolve '$host' to IP, using hostname."
+            echo "Warning: getent not available, using hostname '$host'."
+        fi
+    fi
+
+    if [[ -z "$user" ]] || [[ -z "$connect_host" ]]; then
+        echo "Error: Invalid session data for '$sel'."
+        continue
+    fi
+
+    # Create a new tmux window and run SSH (with port, key, or password if specified)
+    ssh_cmd="ssh $user@$connect_host"
+    if [[ "$port" != "22" ]]; then
+        ssh_cmd="$ssh_cmd -p $port"
+    fi
+
+    if [[ -n "$key" ]]; then
+        ssh_cmd="$ssh_cmd -i \"$key\""
+    elif [[ -n "$password" ]]; then
+        if command -v sshpass &> /dev/null; then
+            ssh_cmd="sshpass -p '$password' $ssh_cmd"
+            echo "Warning: Password stored in plain text in sessions.json - consider encrypting or using key-based auth for security."
+        else
+            echo "Error: sshpass not installed, cannot use stored password for '$sel'. Install with 'apt install sshpass' or use key auth."
+            continue
         fi
     else
-        echo "Warning: getent not available, using hostname '$host'."
+        # No key or password, ssh will prompt for password if needed
+        if ! command -v sshpass &> /dev/null; then
+            echo "sshpass not installed, but ssh will prompt for password if required for '$sel'."
+        fi
     fi
-fi
 
-if [[ -z "$user" ]] || [[ -z "$connect_host" ]]; then
-    echo "Error: Invalid session data for '$selected'."
-    exit 1
-fi
-
-# Create a new tmux window and run SSH (with port, key, or password if specified)
-ssh_cmd="ssh $user@$connect_host"
-if [[ "$port" != "22" ]]; then
-    ssh_cmd="$ssh_cmd -p $port"
-fi
-
-if [[ -n "$key" ]]; then
-    ssh_cmd="$ssh_cmd -i \"$key\""
-elif [[ -n "$password" ]]; then
-    if command -v sshpass &> /dev/null; then
-        ssh_cmd="sshpass -p '$password' $ssh_cmd"
-        echo "Warning: Password stored in plain text in sessions.json - consider encrypting or using key-based auth for security."
-    else
-        echo "Error: sshpass not installed, cannot use stored password. Install with 'apt install sshpass' or use key auth."
-        exit 1
+    if [[ "$USE_CHROMATERM" == true ]]; then
+        ssh_cmd="ct $ssh_cmd"
     fi
-else
-    # No key or password, ssh will prompt for password if needed
-    if ! command -v sshpass &> /dev/null; then
-        echo "sshpass not installed, but ssh will prompt for password if required."
-    fi
-fi
-
-if [[ "$USE_CHROMATERM" == true ]]; then
-    ssh_cmd="ct $ssh_cmd"
-fi
-tmux new-window -t "$TMUX_SESSION" -n "$selected" "$ssh_cmd"
+    tmux new-window -t "$TMUX_SESSION" -n "$sel" "$ssh_cmd"
+done
 
 # Attach to the tmux session
 tmux attach-session -t "$TMUX_SESSION"
