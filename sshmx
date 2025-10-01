@@ -6,6 +6,75 @@ SESSIONS_FILE="$HOME/.ssh/sessions.json"
 # Log file for parsing
 LOG_FILE="$HOME/.ssh-session-manager.log"
 
+# Script name for self-reference
+SCRIPT_NAME="sshmx"
+SCRIPT_PATH="$(realpath "$0")"
+
+# Function to install script to PATH and tmux.conf
+install_script() {
+    local bin_dir="$HOME/.local/bin"
+    # Create .local/bin if not exists
+    mkdir -p "$bin_dir"
+
+    # Create symlink in .local/bin
+    if [[ ! -L "$bin_dir/$SCRIPT_NAME" ]]; then
+        ln -sf "$SCRIPT_PATH" "$bin_dir/$SCRIPT_NAME"
+        echo "Symlink created: $bin_dir/$SCRIPT_NAME -> $SCRIPT_PATH"
+    else
+        echo "Symlink already exists: $bin_dir/$SCRIPT_NAME"
+    fi
+
+    # Possible tmux.conf locations
+    local tmux_configs=(
+        "$HOME/.tmux.conf"
+        "$HOME/.config/tmux.conf"
+        "$HOME/.config/tmux/tmux.conf"
+    )
+
+    local tmux_conf=""
+    local tmux_dir=""
+
+    # Find existing tmux.conf
+    for conf in "${tmux_configs[@]}"; do
+        if [[ -f "$conf" ]]; then
+            tmux_conf="$conf"
+            break
+        fi
+    done
+
+    # If none exist, create ~/.tmux.conf
+    if [[ -z "$tmux_conf" ]]; then
+        tmux_conf="$HOME/.tmux.conf"
+        mkdir -p "$HOME/.config/tmux"
+        touch "$tmux_conf"
+        echo "Created new tmux.conf at $tmux_conf"
+    fi
+
+    # Append tmux binding if not already present
+    if ! grep -q "bind-key C-s display-popup.*sshmx" "$tmux_conf" 2>/dev/null; then
+        echo 'bind-key C-s display-popup -E -w 70% -d "#{pane_current_path}" "sshmx"' >> "$tmux_conf"
+        echo "Tmux binding added to $tmux_conf. Reload with 'tmux source-file $tmux_conf' or restart tmux."
+    else
+        echo "Tmux binding already exists in $tmux_conf."
+    fi
+
+    # Add .local/bin to PATH if not already
+    if ! grep -q "export PATH=\"\$HOME/.local/bin:" "$HOME/.bashrc" 2>/dev/null; then
+        echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
+        echo "Added $bin_dir to PATH in ~/.bashrc. Run 'source ~/.bashrc' to apply."
+    else
+        echo "$bin_dir already in PATH in ~/.bashrc."
+    fi
+
+    echo "Installation complete. Run 'source ~/.bashrc' and reload tmux to use $SCRIPT_NAME from anywhere and Ctrl+b C-s shortcut."
+}
+
+# Auto-install if symlink doesn't exist
+if [[ ! -L "$HOME/.local/bin/$SCRIPT_NAME" ]]; then
+    echo "First run detected. Installing $SCRIPT_NAME to PATH and tmux.conf..."
+    install_script
+fi
+
 # Function to create sample sessions.json
 create_sample_sessions() {
     local config_file="$HOME/.ssh/config"
