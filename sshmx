@@ -147,7 +147,7 @@ remove_session() {
     fi
 
     # Select sessions to remove using fzf multi-select
-    to_remove=$(echo "$session_names" | fzf --multi --prompt="Select sessions to remove: " --height=20)
+    to_remove=$(echo "$session_names" | fzf --multi --reverse --prompt="Select sessions to remove: ")
 
     if [[ -z "$to_remove" ]]; then
         echo "No session selected for removal."
@@ -420,7 +420,7 @@ fi
 session_names=$(jq -r 'keys[]' "$SESSIONS_FILE")
 
 # Select sessions using fzf with multi-select
-selected=$(echo "$session_names" | fzf --multi --prompt="Select SSH sessions: " --height=20)
+selected=$(echo "$session_names" | fzf --multi --reverse --prompt="Select SSH sessions: ")
 
 if [[ -z "$selected" ]]; then
     echo "No session selected."
