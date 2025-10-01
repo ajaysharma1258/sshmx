@@ -65,6 +65,30 @@ install_script() {
         echo "$bin_dir already in PATH in ~/.bashrc."
     fi
 
+    # Add bash completion if not already present
+    if ! grep -q "_sshmx() {" "$HOME/.bashrc" 2>/dev/null; then
+        cat >> "$HOME/.bashrc" << 'EOF'
+
+_sshmx() {
+    local cur prev opts
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+    opts="--install --add --remove -i -a -r"
+
+    if [[ ${cur} == -* ]] ; then
+        COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
+        return 0
+    fi
+}
+
+complete -F _sshmx sshmx
+EOF
+        echo "Bash completion added to ~/.bashrc. Run 'source ~/.bashrc' to apply."
+    else
+        echo "Bash completion already exists in ~/.bashrc."
+    fi
+
     echo "Installation complete. Run 'source ~/.bashrc' and reload tmux to use $SCRIPT_NAME from anywhere and Ctrl+b C-s shortcut."
 }
 
@@ -150,15 +174,15 @@ remove_session() {
 
 # Check for flags
 case "$1" in
-    --install)
+    --install|-i)
         install_script
         exit 0
         ;;
-    --add)
+    --add|-a)
         add_session
         exit 0
         ;;
-    --remove)
+    --remove|-r)
         remove_session
         exit 0
         ;;
