@@ -61,7 +61,7 @@ create_sample_sessions() {
                        --arg u "$user" \
                        --arg p "$port" \
                        --arg k "$key" \
-                       '.[$h] = {host: $hn, user: $u, port: ($p | tonumber), key: $k}' \
+                       '.[$h] = {host: $hn, user: $u, port: ($p | tonumber), key: $k, password: ""}' \
                        "$temp_json" > "${temp_json}.tmp" && mv "${temp_json}.tmp" "$temp_json"
                 fi
                 current_host="$captured"
@@ -130,7 +130,7 @@ create_sample_sessions() {
                --arg u "$user" \
                --arg p "$port" \
                --arg k "$key" \
-               '.[$h] = {host: $hn, user: $u, port: ($p | tonumber), key: $k}' \
+               '.[$h] = {host: $hn, user: $u, port: ($p | tonumber), key: $k, password: ""}' \
                "$temp_json" > "${temp_json}.tmp" && mv "${temp_json}.tmp" "$temp_json"
         fi
     fi
@@ -155,7 +155,7 @@ create_sample_sessions() {
            --arg u "youruser" \
            --arg p "22" \
            --arg k "~/.ssh/id_rsa" \
-           '.[$h] = {host: $hn, user: $u, port: ($p | tonumber), key: $k}' \
+           '.[$h] = {host: $hn, user: $u, port: ($p | tonumber), key: $k, password: ""}' \
            "$temp_json" > "${temp_json}.tmp" && mv "${temp_json}.tmp" "$temp_json"
     else
         echo "$(date): Added $num_hosts hosts from config." >> "$LOG_FILE"
@@ -202,7 +202,7 @@ else
 fi
 
 # Tmux session name
-TMUX_SESSION="ssh-sessions"
+TMUX_SESSION="sshmx"
 
 # Function to check if tmux session exists
 session_exists() {
@@ -225,11 +225,12 @@ if [[ -z "$selected" ]]; then
     exit 0
 fi
 
-# Extract user, host, port, and key from JSON
+# Extract user, host, port, key, and password from JSON
 user=$(jq -r --arg key "$selected" '.[$key].user // empty' "$SESSIONS_FILE")
 host=$(jq -r --arg key "$selected" '.[$key].host // empty' "$SESSIONS_FILE")
 port=$(jq -r --arg key "$selected" '.[$key].port // 22' "$SESSIONS_FILE")
 key=$(jq -r --arg key "$selected" '.[$key].key // empty' "$SESSIONS_FILE")
+password=$(jq -r --arg key "$selected" '.[$key].password // empty' "$SESSIONS_FILE")
 
 # Expand key path if it contains ~
 if [[ -n "$key" && "$key" == ~* ]]; then
@@ -257,14 +258,29 @@ if [[ -z "$user" ]] || [[ -z "$connect_host" ]]; then
     exit 1
 fi
 
-# Create a new tmux window and run SSH (with port and key if specified)
+# Create a new tmux window and run SSH (with port, key, or password if specified)
 ssh_cmd="ssh $user@$connect_host"
 if [[ "$port" != "22" ]]; then
     ssh_cmd="$ssh_cmd -p $port"
 fi
+
 if [[ -n "$key" ]]; then
     ssh_cmd="$ssh_cmd -i \"$key\""
+elif [[ -n "$password" ]]; then
+    if command -v sshpass &> /dev/null; then
+        ssh_cmd="sshpass -p '$password' $ssh_cmd"
+        echo "Warning: Password stored in plain text in sessions.json - consider encrypting or using key-based auth for security."
+    else
+        echo "Error: sshpass not installed, cannot use stored password. Install with 'apt install sshpass' or use key auth."
+        exit 1
+    fi
+else
+    # No key or password, ssh will prompt for password if needed
+    if ! command -v sshpass &> /dev/null; then
+        echo "sshpass not installed, but ssh will prompt for password if required."
+    fi
 fi
+
 if [[ "$USE_CHROMATERM" == true ]]; then
     ssh_cmd="ct $ssh_cmd"
 fi
