@@ -107,17 +107,62 @@ add_session() {
     echo "Added session '$name' to $SESSIONS_FILE."
 }
 
-# Check for install flag
-if [[ "$1" == "--install" ]]; then
-    install_script
-    exit 0
-fi
+# Function to remove sessions interactively
+remove_session() {
+    if [[ ! -f "$SESSIONS_FILE" ]]; then
+        echo "No sessions.json found. Nothing to remove."
+        return 1
+    fi
 
-# Check for add flag
-if [[ "$1" == "--add" ]]; then
-    add_session
-    exit 0
-fi
+    # Get list of session names
+    session_names=$(jq -r 'keys[]' "$SESSIONS_FILE")
+
+    if [[ -z "$session_names" ]]; then
+        echo "No sessions to remove."
+        return 1
+    fi
+
+    # Select sessions to remove using fzf multi-select
+    to_remove=$(echo "$session_names" | fzf --multi --prompt="Select sessions to remove: " --height=20)
+
+    if [[ -z "$to_remove" ]]; then
+        echo "No session selected for removal."
+        return 0
+    fi
+
+    # Backup sessions.json
+    backup_file="$SESSIONS_FILE.backup-$(date +%Y%m%d_%H%M%S)"
+    cp "$SESSIONS_FILE" "$backup_file"
+    echo "Backup created: $backup_file"
+
+    # Remove each selected session individually
+    temp_file="$SESSIONS_FILE.tmp"
+    cp "$SESSIONS_FILE" "$temp_file"
+    for session in $to_remove; do
+        if [[ -n "$session" ]]; then
+            jq "del(.[\"$session\"])" "$temp_file" > "$temp_file.$$" && mv "$temp_file.$$" "$temp_file"
+        fi
+    done
+    mv "$temp_file" "$SESSIONS_FILE"
+
+    echo "Removed selected sessions. Backup: $backup_file"
+}
+
+# Check for flags
+case "$1" in
+    --install)
+        install_script
+        exit 0
+        ;;
+    --add)
+        add_session
+        exit 0
+        ;;
+    --remove)
+        remove_session
+        exit 0
+        ;;
+esac
 
 # Auto-install if symlink doesn't exist
 if [[ ! -L "$HOME/.local/bin/$SCRIPT_NAME" ]]; then
@@ -291,7 +336,7 @@ create_sample_sessions() {
     # Write to file
     cp "$temp_json" "$SESSIONS_FILE"
     rm -f "$temp_json" "${temp_json}.tmp"
-    echo "Created sample $SESSIONS_FILE based on ~/.ssh/config (or default sample."
+    echo "Created sample $SESSIONS_FILE based on ~/.ssh/config (or default sample)."
     echo "$(date): Generated JSON content:" >> "$LOG_FILE"
     cat "$SESSIONS_FILE" >> "$LOG_FILE"
     echo "$(date): Config parsing complete" >> "$LOG_FILE"
