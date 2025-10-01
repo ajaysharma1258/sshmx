@@ -4,7 +4,7 @@
 SESSIONS_FILE="$HOME/.ssh/sessions.json"
 
 # Log file for parsing
-LOG_FILE="$HOME/.ssh/ssh-session-manager.log"
+LOG_FILE="$HOME/.ssh-session-manager.log"
 
 # Function to create sample sessions.json
 create_sample_sessions() {
@@ -338,12 +338,7 @@ EOF
     fi
 
     if [[ "$USE_CHROMATERM" == true ]]; then
-        if [[ -n "$jump" ]]; then
-            # For wrapper, wrap ct around ssh
-            sed -i "s/ssh -F $temp_config target/ct ssh -F $temp_config target/" "$wrapper"
-        else
-            ssh_cmd="ct $ssh_cmd"
-        fi
+        ssh_cmd="ct $ssh_cmd"
     fi
     tmux new-window -t "$TMUX_SESSION" -n "$sel" "$ssh_cmd"
 done
