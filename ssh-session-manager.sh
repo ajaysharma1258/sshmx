@@ -21,6 +21,7 @@ create_sample_sessions() {
         local hostname=""
         local port=22
         local key=""
+        local jump=""
 
         while IFS= read -r line; do
             line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
@@ -55,13 +56,14 @@ create_sample_sessions() {
                         fi
                     fi
 
-                    echo "$(date): Adding host '$current_host': user='$user', host='$resolved_host', port=$port, key='$key'" >> "$LOG_FILE"
+                    echo "$(date): Adding host '$current_host': user='$user', host='$resolved_host', port=$port, key='$key', jump='$jump'" >> "$LOG_FILE"
                     jq --arg h "$current_host" \
                        --arg hn "$resolved_host" \
                        --arg u "$user" \
                        --arg p "$port" \
                        --arg k "$key" \
-                       '.[$h] = {host: $hn, user: $u, port: ($p | tonumber), key: $k, password: ""}' \
+                       --arg j "$jump" \
+                       '.[$h] = {host: $hn, user: $u, port: ($p | tonumber), key: $k, password: "", jump: $j}' \
                        "$temp_json" > "${temp_json}.tmp" && mv "${temp_json}.tmp" "$temp_json"
                 fi
                 current_host="$captured"
@@ -73,6 +75,7 @@ create_sample_sessions() {
                 hostname=""
                 port=22
                 key=""
+                jump=""
                 echo "$(date): Starting new host block: '$current_host'" >> "$LOG_FILE"
             elif [[ "$line" =~ ^[[:space:]]*HostName[[:space:]]+(.*) ]]; then
                 hostname="${BASH_REMATCH[1]}"
@@ -90,6 +93,9 @@ create_sample_sessions() {
                     key=$(eval echo "$key")
                 fi
                 echo "$(date): IdentityFile: '$key'" >> "$LOG_FILE"
+            elif [[ "$line" =~ ^[[:space:]]*ProxyJump[[:space:]]+(.*) ]]; then
+                jump="${BASH_REMATCH[1]}"
+                echo "$(date): ProxyJump: '$jump'" >> "$LOG_FILE"
             else
                 echo "$(date): Line did not match any pattern: '$line'" >> "$LOG_FILE"
                 if [[ -n "$line" ]]; then  # Skip empty lines
@@ -124,13 +130,14 @@ create_sample_sessions() {
                 fi
             fi
 
-            echo "$(date): Adding last host '$current_host': user='$user', host='$resolved_host', port=$port, key='$key'" >> "$LOG_FILE"
+            echo "$(date): Adding last host '$current_host': user='$user', host='$resolved_host', port=$port, key='$key', jump='$jump'" >> "$LOG_FILE"
             jq --arg h "$current_host" \
                --arg hn "$resolved_host" \
                --arg u "$user" \
                --arg p "$port" \
                --arg k "$key" \
-               '.[$h] = {host: $hn, user: $u, port: ($p | tonumber), key: $k, password: ""}' \
+               --arg j "$jump" \
+               '.[$h] = {host: $hn, user: $u, port: ($p | tonumber), key: $k, password: "", jump: $j}' \
                "$temp_json" > "${temp_json}.tmp" && mv "${temp_json}.tmp" "$temp_json"
         fi
     fi
@@ -155,7 +162,8 @@ create_sample_sessions() {
            --arg u "youruser" \
            --arg p "22" \
            --arg k "~/.ssh/id_rsa" \
-           '.[$h] = {host: $hn, user: $u, port: ($p | tonumber), key: $k, password: ""}' \
+           --arg j "" \
+           '.[$h] = {host: $hn, user: $u, port: ($p | tonumber), key: $k, password: "", jump: $j}' \
            "$temp_json" > "${temp_json}.tmp" && mv "${temp_json}.tmp" "$temp_json"
     else
         echo "$(date): Added $num_hosts hosts from config." >> "$LOG_FILE"
@@ -231,12 +239,13 @@ echo "$selected" | while read -r sel; do
         continue
     fi
 
-    # Extract user, host, port, key, and password from JSON for this session
+    # Extract user, host, port, key, password, and jump from JSON for this session
     user=$(jq -r --arg key "$sel" '.[$key].user // empty' "$SESSIONS_FILE")
     host=$(jq -r --arg key "$sel" '.[$key].host // empty' "$SESSIONS_FILE")
     port=$(jq -r --arg key "$sel" '.[$key].port // 22' "$SESSIONS_FILE")
     key=$(jq -r --arg key "$sel" '.[$key].key // empty' "$SESSIONS_FILE")
     password=$(jq -r --arg key "$sel" '.[$key].password // empty' "$SESSIONS_FILE")
+    jump=$(jq -r --arg key "$sel" '.[$key].jump // empty' "$SESSIONS_FILE")
 
     # Expand key path if it contains ~
     if [[ -n "$key" && "$key" == ~* ]]; then
@@ -264,31 +273,77 @@ echo "$selected" | while read -r sel; do
         continue
     fi
 
-    # Create a new tmux window and run SSH (with port, key, or password if specified)
-    ssh_cmd="ssh $user@$connect_host"
-    if [[ "$port" != "22" ]]; then
-        ssh_cmd="$ssh_cmd -p $port"
-    fi
-
-    if [[ -n "$key" ]]; then
-        ssh_cmd="$ssh_cmd -i \"$key\""
-    elif [[ -n "$password" ]]; then
-        if command -v sshpass &> /dev/null; then
-            ssh_cmd="sshpass -p '$password' $ssh_cmd"
-            echo "Warning: Password stored in plain text in sessions.json - consider encrypting or using key-based auth for security."
-        else
-            echo "Error: sshpass not installed, cannot use stored password for '$sel'. Install with 'apt install sshpass' or use key auth."
+    if [[ -n "$jump" ]]; then
+        # Get jump server info
+        jump_user=$(jq -r --arg j "$jump" '.[$j].user // empty' "$SESSIONS_FILE")
+        jump_host=$(jq -r --arg j "$jump" '.[$j].host // empty' "$SESSIONS_FILE")
+        jump_port=$(jq -r --arg j "$jump" '.[$j].port // 22' "$SESSIONS_FILE")
+        jump_key=$(jq -r --arg j "$jump" '.[$j].key // empty' "$SESSIONS_FILE")
+        if [[ -z "$jump_user" ]] || [[ -z "$jump_host" ]]; then
+            echo "Error: Invalid jump server '$jump' for '$sel'."
             continue
         fi
+
+        # Create unique temp config and wrapper
+        temp_config="/tmp/ssh-config-$RANDOM"
+        wrapper="/tmp/ssh-wrapper-$RANDOM.sh"
+        cat > "$temp_config" << EOF
+Host target
+    HostName $connect_host
+    User $user
+    Port $port
+    ProxyJump $jump_user@$jump_host:$jump_port
+EOF
+        if [[ -n "$key" ]]; then
+            echo "    IdentityFile $key" >> "$temp_config"
+        fi
+        if [[ -n "$jump_key" ]]; then
+            echo "Host *
+    IdentityFile $jump_key" >> "$temp_config"
+        fi
+
+        cat > "$wrapper" << EOF
+#!/bin/bash
+ssh -F $temp_config target
+shred -u $temp_config
+rm -f $wrapper
+EOF
+        chmod +x "$wrapper"
+
+        ssh_cmd="$wrapper"
+        echo "Created temp config $temp_config and wrapper $wrapper for jump connection to '$sel'. Files auto-cleaned after SSH exits."
     else
-        # No key or password, ssh will prompt for password if needed
-        if ! command -v sshpass &> /dev/null; then
-            echo "sshpass not installed, but ssh will prompt for password if required for '$sel'."
+        # No jump, standard SSH
+        ssh_cmd="ssh $user@$connect_host"
+        if [[ "$port" != "22" ]]; then
+            ssh_cmd="$ssh_cmd -p $port"
+        fi
+
+        if [[ -n "$key" ]]; then
+            ssh_cmd="$ssh_cmd -i \"$key\""
+        elif [[ -n "$password" ]]; then
+            if command -v sshpass &> /dev/null; then
+                ssh_cmd="sshpass -p '$password' $ssh_cmd"
+                echo "Warning: Password stored in plain text in sessions.json - consider encrypting or using key-based auth for security."
+            else
+                echo "Error: sshpass not installed, cannot use stored password for '$sel'. Install with 'apt install sshpass' or use key auth."
+                continue
+            fi
+        else
+            # No key or password, ssh will prompt for password if needed
+            if ! command -v sshpass &> /dev/null; then
+                echo "sshpass not installed, but ssh will prompt for password if required for '$sel'."
+            fi
         fi
     fi
 
     if [[ "$USE_CHROMATERM" == true ]]; then
-        ssh_cmd="ct $ssh_cmd"
+        if [[ -n "$jump" ]]; then
+            # For wrapper, wrap ct around ssh
+            sed -i "s/ssh -F $temp_config target/ct ssh -F $temp_config target/" "$wrapper"
+        else
+            ssh_cmd="ct $ssh_cmd"
+        fi
     fi
     tmux new-window -t "$TMUX_SESSION" -n "$sel" "$ssh_cmd"
 done
