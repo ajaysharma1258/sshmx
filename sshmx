@@ -116,6 +116,8 @@ add_session() {
     read -p "Private key path (optional): " key
     read -p "Password (optional, plain text - insecure, use keys): " password
     read -p "Jump server (optional): " jump
+    read -p "Group (optional): " group
+    group=${group:-""}
 
     # Add to JSON
     jq --arg n "$name" \
@@ -125,7 +127,8 @@ add_session() {
        --arg k "$key" \
        --arg pw "$password" \
        --arg j "$jump" \
-       '.[$n] = {host: $h, user: $u, port: ($p | tonumber), key: $k, password: $pw, jump: $j}' \
+       --arg g "$group" \
+       '.[$n] = {host: $h, user: $u, port: ($p | tonumber), key: $k, password: $pw, jump: $j, group: $g}' \
        "$SESSIONS_FILE" > "$SESSIONS_FILE.tmp" && mv "$SESSIONS_FILE.tmp" "$SESSIONS_FILE"
 
     echo "Added session '$name' to $SESSIONS_FILE."
@@ -231,7 +234,7 @@ parse_config_to_json() {
                        --arg p "$port" \
                        --arg k "$key" \
                        --arg j "$jump" \
-                       '.[$h] = {host: $hn, user: $u, port: ($p | tonumber), key: $k, password: "", jump: $j}' \
+                       '.[$h] = {host: $hn, user: $u, port: ($p | tonumber), key: $k, password: "", jump: $j, group: ""}' \
                        "$temp_json" > "${temp_json}.tmp" && mv "${temp_json}.tmp" "$temp_json"
                 fi
                 current_host="$captured"
@@ -305,7 +308,7 @@ parse_config_to_json() {
                --arg p "$port" \
                --arg k "$key" \
                --arg j "$jump" \
-               '.[$h] = {host: $hn, user: $u, port: ($p | tonumber), key: $k, password: "", jump: $j}' \
+               '.[$h] = {host: $hn, user: $u, port: ($p | tonumber), key: $k, password: "", jump: $j, group: ""}' \
                "$temp_json" > "${temp_json}.tmp" && mv "${temp_json}.tmp" "$temp_json"
         fi
     fi
@@ -331,7 +334,8 @@ sync_sessions() {
                 id_key=$(jq -r --arg k "$key" '.[$k].key // empty' "$temp_json")
                 j=$(jq -r --arg k "$key" '.[$k].jump // empty' "$temp_json")
                 current_pw=$(jq -r --arg k "$key" '.[$k].password // ""' "$SESSIONS_FILE")
-                echo "$(date): Updating session '$key' from config (preserving password)" >> "$LOG_FILE"
+                current_group=$(jq -r --arg k "$key" '.[$k].group // ""' "$SESSIONS_FILE")
+                echo "$(date): Updating session '$key' from config (preserving password and group)" >> "$LOG_FILE"
                 jq --arg h "$key" \
                    --arg hn "$hn" \
                    --arg u "$u" \
@@ -339,7 +343,8 @@ sync_sessions() {
                    --arg ky "$id_key" \
                    --arg pw "$current_pw" \
                    --arg j "$j" \
-                   '.[$h] = {host: $hn, user: $u, port: ($p | tonumber), key: $ky, password: $pw, jump: $j}' \
+                   --arg g "$current_group" \
+                   '.[$h] = {host: $hn, user: $u, port: ($p | tonumber), key: $ky, password: $pw, jump: $j, group: $g}' \
                    "$SESSIONS_FILE" > "${SESSIONS_FILE}.tmp" && mv "${SESSIONS_FILE}.tmp" "$SESSIONS_FILE" || echo "Error updating $key" >> "$LOG_FILE"
             fi
         done <<< "$config_keys"
@@ -373,7 +378,7 @@ sync_sessions() {
            --arg p "22" \
            --arg k "~/.ssh/id_rsa" \
            --arg j "" \
-           '.[$h] = {host: $hn, user: $u, port: ($p | tonumber), key: $k, password: "", jump: $j}' \
+           '.[$h] = {host: $hn, user: $u, port: ($p | tonumber), key: $k, password: "", jump: $j, group: ""}' \
            "$SESSIONS_FILE" > "${SESSIONS_FILE}.tmp" && mv "${SESSIONS_FILE}.tmp" "$SESSIONS_FILE"
     else
         local config_hosts=$(jq 'keys | length' "$temp_json" 2>/dev/null || echo 0)
@@ -398,16 +403,16 @@ Options:
     -i, --install    Install script to ~/.local/bin, add to PATH in ~/.bashrc, and add tmux binding (Ctrl+b C-s)
     -a, --add        Add a new SSH session interactively to sessions.json
     -r, --remove     Remove SSH sessions interactively from sessions.json (with backup)
-    -s, --sync       Sync sessions.json with ~/.ssh/config (updates from config, preserves passwords)
+    -s, --sync       Sync sessions.json with ~/.ssh/config (updates from config, preserves passwords and groups)
     -h, --help       Show this help message
 
 Without options:
     - If sessions.json doesn't exist, creates it from ~/.ssh/config (or sample)
     - Opens fzf multi-select for sessions
     - Connects selected sessions as new tmux windows in current session (if in tmux) or "sshmx" session
-    - Supports keys, passwords (sshpass), jump servers (ProxyJump), chromaterm coloring, IP resolution
+    - Supports keys, passwords (sshpass), jump servers (ProxyJump), chromaterm coloring, IP resolution, groups (optional field for organization)
 
-Sessions stored in ~/.ssh/sessions.json (JSON format).
+Sessions stored in ~/.ssh/sessions.json (JSON format: {host, user, port, key, password, jump, group}).
 Logs parsing to ~/.ssh-session-manager.log.
 
 Dependencies: jq, fzf, tmux (optional: sshpass, ct/chromaterm, getent).
@@ -447,16 +452,18 @@ fi
 
 # Create sessions file if it doesn't exist
 if [[ ! -f "$SESSIONS_FILE" ]]; then
-    local temp_json=$(parse_config_to_json)
-    cp "$temp_json" "$SESSIONS_FILE"
-    rm -f "$temp_json"
-    local num_hosts=$(jq 'keys | length' "$SESSIONS_FILE")
+    temp_json=$(parse_config_to_json)
+    if [[ -n "$temp_json" && -f "$temp_json" ]]; then
+        cp "$temp_json" "$SESSIONS_FILE"
+        rm -f "$temp_json"
+    fi
+    num_hosts=$(jq 'keys | length' "$SESSIONS_FILE" 2>/dev/null || echo 0)
     if [[ "$num_hosts" -eq 0 ]]; then
-        local sample_host="example.com"
-        local resolved_sample="$sample_host"
+        sample_host="example.com"
+        resolved_sample="$sample_host"
         if [[ ! "$sample_host" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             if command -v getent &> /dev/null; then
-                local temp_ip=$(getent hosts "$sample_host" | awk '{print $1}' | head -n1)
+                temp_ip=$(getent hosts "$sample_host" | awk '{print $1}' | head -n1)
                 if [[ -n "$temp_ip" && "$temp_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
                     resolved_sample="$temp_ip"
                 fi
@@ -470,7 +477,7 @@ if [[ ! -f "$SESSIONS_FILE" ]]; then
            --arg p "22" \
            --arg k "~/.ssh/id_rsa" \
            --arg j "" \
-           '.[$h] = {host: $hn, user: $u, port: ($p | tonumber), key: $k, password: "", jump: $j}' \
+           '.[$h] = {host: $hn, user: $u, port: ($p | tonumber), key: $k, password: "", jump: $j, group: ""}' \
            "$SESSIONS_FILE" > "${SESSIONS_FILE}.tmp" && mv "${SESSIONS_FILE}.tmp" "$SESSIONS_FILE"
     fi
     echo "Created $SESSIONS_FILE based on ~/.ssh/config (or default sample)."
