@@ -57,6 +57,14 @@ install_script() {
         echo "Tmux binding already exists in $tmux_conf."
     fi
 
+    # Append tmux groups binding if not already present
+    if ! grep -q "bind-key C-g display-popup.*sshmx.*-g" "$tmux_conf" 2>/dev/null; then
+        echo 'bind-key C-g display-popup -E -w 70% -d "#{pane_current_path}" "sshmx -g"' >> "$tmux_conf"
+        echo "Tmux groups binding added to $tmux_conf. Reload with 'tmux source-file $tmux_conf' or restart tmux."
+    else
+        echo "Tmux groups binding already exists in $tmux_conf."
+    fi
+
     # Add .local/bin to PATH if not already
     if ! grep -q "export PATH=\"\$HOME/.local/bin:" "$HOME/.bashrc" 2>/dev/null; then
         echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
@@ -89,7 +97,7 @@ EOF
         echo "Bash completion already exists in ~/.bashrc."
     fi
 
-    echo "Installation complete. Run 'source ~/.bashrc' and reload tmux to use $SCRIPT_NAME from anywhere and Ctrl+b C-s shortcut."
+    echo "Installation complete. Run 'source ~/.bashrc' and reload tmux to use $SCRIPT_NAME from anywhere. Shortcuts: Ctrl+b C-s (sessions), Ctrl+b C-g (groups)."
 }
 
 # Function to add new session interactively
@@ -413,6 +421,7 @@ Without options:
     - Connects selected sessions as new tmux windows in current session (if in tmux) or "sshmx" session
     - Supports keys, passwords (sshpass), jump servers (ProxyJump), chromaterm coloring, IP resolution, groups (optional field for organization)
     - Use -g to select groups instead of individual sessions
+    - Tmux shortcuts: Ctrl+b C-s (individual sessions), Ctrl+b C-g (group sessions)
 
 Sessions stored in ~/.ssh/sessions.json (JSON format: {host, user, port, key, password, jump, group}).
 Logs parsing to ~/.ssh-session-manager.log.
