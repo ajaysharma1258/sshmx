@@ -82,7 +82,7 @@ _sshmx() {
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    opts="--install --add --remove --sync --help -i -a -r -s -h"
+    opts="--install --add --remove --sync --groups --export --import --help -i -a -r -s -g -e -p -h"
 
     if [[ ${cur} == -* ]] ; then
         COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
@@ -400,6 +400,407 @@ sync_sessions() {
     echo "$(date): Config parsing complete" >> "$LOG_FILE"
 }
 
+# Function to export sessions.json
+export_sessions() {
+    if [[ ! -f "$SESSIONS_FILE" ]]; then
+        echo "No sessions.json found to export."
+        return 1
+    fi
+
+    local export_file
+    if [[ -n "$2" ]]; then
+        export_file="$2"
+    else
+        read -p "Enter export filename (default: sessions-backup-$(date +%Y%m%d_%H%M%S).json): " export_file
+        export_file=${export_file:-"sessions-backup-$(date +%Y%m%d_%H%M%S).json"}
+    fi
+
+    cp "$SESSIONS_FILE" "$export_file"
+    echo "Exported sessions to $export_file."
+}
+
+# Function to import sessions.json
+import_sessions() {
+    local import_file
+    if [[ -n "$2" ]]; then
+        import_file="$2"
+    else
+        read -p "Enter import filename: " import_file
+    fi
+
+    if [[ ! -f "$import_file" ]]; then
+        echo "Import file not found: $import_file"
+        return 1
+    fi
+
+    if [[ ! -f "$SESSIONS_FILE" ]]; then
+        echo "No existing sessions.json, creating from import."
+        cp "$import_file" "$SESSIONS_FILE"
+        echo "Imported sessions from $import_file."
+        return 0
+    fi
+
+    # Backup current
+    local backup_file="$SESSIONS_FILE.backup-$(date +%Y%m%d_%H%M%S)"
+    cp "$SESSIONS_FILE" "$backup_file"
+    echo "Backed up current sessions to $backup_file."
+
+    # Overwrite with import
+    cp "$import_file" "$SESSIONS_FILE"
+    echo "Imported sessions from $import_file (overwrote existing)."
+}
+
+# Function to export sessions.json
+export_sessions() {
+    if [[ ! -f "$SESSIONS_FILE" ]]; then
+        echo "No sessions.json found to export."
+        return 1
+    fi
+
+    local export_file
+    if [[ -n "$2" ]]; then
+        export_file="$2"
+    else
+        read -p "Enter export filename (default: sessions-backup-$(date +%Y%m%d_%H%M%S).json): " export_file
+        export_file=${export_file:-"sessions-backup-$(date +%Y%m%d_%H%M%S).json"}
+    fi
+
+    cp "$SESSIONS_FILE" "$export_file"
+    echo "Exported sessions to $export_file."
+}
+
+# Function to import sessions.json
+import_sessions() {
+    local import_file
+    if [[ -n "$2" ]]; then
+        import_file="$2"
+    else
+        read -p "Enter import filename: " import_file
+    fi
+
+    if [[ ! -f "$import_file" ]]; then
+        echo "Import file not found: $import_file"
+        return 1
+    fi
+
+    if [[ ! -f "$SESSIONS_FILE" ]]; then
+        echo "No existing sessions.json, creating from import."
+        cp "$import_file" "$SESSIONS_FILE"
+        echo "Imported sessions from $import_file."
+        return 0
+    fi
+
+    # Backup current
+    local backup_file="$SESSIONS_FILE.backup-$(date +%Y%m%d_%H%M%S)"
+    cp "$SESSIONS_FILE" "$backup_file"
+    echo "Backed up current sessions to $backup_file."
+
+    # Overwrite with import
+    cp "$import_file" "$SESSIONS_FILE"
+    echo "Imported sessions from $import_file (overwrote existing)."
+}
+
+# Function to export sessions.json
+export_sessions() {
+    if [[ ! -f "$SESSIONS_FILE" ]]; then
+        echo "No sessions.json found to export."
+        return 1
+    fi
+
+    local export_file
+    if [[ -n "$2" ]]; then
+        export_file="$2"
+    else
+        read -p "Enter export filename (default: sessions-backup-$(date +%Y%m%d_%H%M%S).json): " export_file
+        export_file=${export_file:-"sessions-backup-$(date +%Y%m%d_%H%M%S).json"}
+    fi
+
+    cp "$SESSIONS_FILE" "$export_file"
+    echo "Exported sessions to $export_file."
+}
+
+# Function to import sessions.json
+import_sessions() {
+    local import_file
+    if [[ -n "$2" ]]; then
+        import_file="$2"
+    else
+        read -p "Enter import filename: " import_file
+    fi
+
+    if [[ ! -f "$import_file" ]]; then
+        echo "Import file not found: $import_file"
+        return 1
+    fi
+
+    if [[ ! -f "$SESSIONS_FILE" ]]; then
+        echo "No existing sessions.json, creating from import."
+        cp "$import_file" "$SESSIONS_FILE"
+        echo "Imported sessions from $import_file."
+        return 0
+    fi
+
+    # Backup current
+    local backup_file="$SESSIONS_FILE.backup-$(date +%Y%m%d_%H%M%S)"
+    cp "$SESSIONS_FILE" "$backup_file"
+    echo "Backed up current sessions to $backup_file."
+
+    # Overwrite with import
+    cp "$import_file" "$SESSIONS_FILE"
+    echo "Imported sessions from $import_file (overwrote existing)."
+}
+
+# Function to export sessions.json
+export_sessions() {
+    if [[ ! -f "$SESSIONS_FILE" ]]; then
+        echo "No sessions.json found to export."
+        return 1
+    fi
+
+    local export_file
+    if [[ -n "$2" ]]; then
+        export_file="$2"
+    else
+        read -p "Enter export filename (default: sessions-backup-$(date +%Y%m%d_%H%M%S).json): " export_file
+        export_file=${export_file:-"sessions-backup-$(date +%Y%m%d_%H%M%S).json"}
+    fi
+
+    cp "$SESSIONS_FILE" "$export_file"
+    echo "Exported sessions to $export_file."
+}
+
+# Function to import sessions.json
+import_sessions() {
+    local import_file
+    if [[ -n "$2" ]]; then
+        import_file="$2"
+    else
+        read -p "Enter import filename: " import_file
+    fi
+
+    if [[ ! -f "$import_file" ]]; then
+        echo "Import file not found: $import_file"
+        return 1
+    fi
+
+    if [[ ! -f "$SESSIONS_FILE" ]]; then
+        echo "No existing sessions.json, creating from import."
+        cp "$import_file" "$SESSIONS_FILE"
+        echo "Imported sessions from $import_file."
+        return 0
+    fi
+
+    # Backup current
+    local backup_file="$SESSIONS_FILE.backup-$(date +%Y%m%d_%H%M%S)"
+    cp "$SESSIONS_FILE" "$backup_file"
+    echo "Backed up current sessions to $backup_file."
+
+    # Overwrite with import
+    cp "$import_file" "$SESSIONS_FILE"
+    echo "Imported sessions from $import_file (overwrote existing)."
+}
+
+# Function to export sessions.json
+export_sessions() {
+    if [[ ! -f "$SESSIONS_FILE" ]]; then
+        echo "No sessions.json found to export."
+        return 1
+    fi
+
+    local export_file
+    if [[ -n "$2" ]]; then
+        export_file="$2"
+    else
+        read -p "Enter export filename (default: sessions-backup-$(date +%Y%m%d_%H%M%S).json): " export_file
+        export_file=${export_file:-"sessions-backup-$(date +%Y%m%d_%H%M%S).json"}
+    fi
+
+    cp "$SESSIONS_FILE" "$export_file"
+    echo "Exported sessions to $export_file."
+}
+
+# Function to import sessions.json
+import_sessions() {
+    local import_file
+    if [[ -n "$2" ]]; then
+        import_file="$2"
+    else
+        read -p "Enter import filename: " import_file
+    fi
+
+    if [[ ! -f "$import_file" ]]; then
+        echo "Import file not found: $import_file"
+        return 1
+    fi
+
+    if [[ ! -f "$SESSIONS_FILE" ]]; then
+        echo "No existing sessions.json, creating from import."
+        cp "$import_file" "$SESSIONS_FILE"
+        echo "Imported sessions from $import_file."
+        return 0
+    fi
+
+    # Backup current
+    local backup_file="$SESSIONS_FILE.backup-$(date +%Y%m%d_%H%M%S)"
+    cp "$SESSIONS_FILE" "$backup_file"
+    echo "Backed up current sessions to $backup_file."
+
+    # Overwrite with import
+    cp "$import_file" "$SESSIONS_FILE"
+    echo "Imported sessions from $import_file (overwrote existing)."
+}
+
+# Function to export sessions.json
+export_sessions() {
+    if [[ ! -f "$SESSIONS_FILE" ]]; then
+        echo "No sessions.json found to export."
+        return 1
+    fi
+
+    local export_file
+    if [[ -n "$2" ]]; then
+        export_file="$2"
+    else
+        read -p "Enter export filename (default: sessions-backup-$(date +%Y%m%d_%H%M%S).json): " export_file
+        export_file=${export_file:-"sessions-backup-$(date +%Y%m%d_%H%M%S).json"}
+    fi
+
+    cp "$SESSIONS_FILE" "$export_file"
+    echo "Exported sessions to $export_file."
+}
+
+# Function to import sessions.json
+import_sessions() {
+    local import_file
+    if [[ -n "$2" ]]; then
+        import_file="$2"
+    else
+        read -p "Enter import filename: " import_file
+    fi
+
+    if [[ ! -f "$import_file" ]]; then
+        echo "Import file not found: $import_file"
+        return 1
+    fi
+
+    if [[ ! -f "$SESSIONS_FILE" ]]; then
+        echo "No existing sessions.json, creating from import."
+        cp "$import_file" "$SESSIONS_FILE"
+        echo "Imported sessions from $import_file."
+        return 0
+    fi
+
+    # Backup current
+    local backup_file="$SESSIONS_FILE.backup-$(date +%Y%m%d_%H%M%S)"
+    cp "$SESSIONS_FILE" "$backup_file"
+    echo "Backed up current sessions to $backup_file."
+
+    # Overwrite with import
+    cp "$import_file" "$SESSIONS_FILE"
+    echo "Imported sessions from $import_file (overwrote existing)."
+}
+
+# Function to export sessions.json
+export_sessions() {
+    if [[ ! -f "$SESSIONS_FILE" ]]; then
+        echo "No sessions.json found to export."
+        return 1
+    fi
+
+    local export_file
+    if [[ -n "$2" ]]; then
+        export_file="$2"
+    else
+        read -p "Enter export filename (default: sessions-backup-$(date +%Y%m%d_%H%M%S).json): " export_file
+        export_file=${export_file:-"sessions-backup-$(date +%Y%m%d_%H%M%S).json"}
+    fi
+
+    cp "$SESSIONS_FILE" "$export_file"
+    echo "Exported sessions to $export_file."
+}
+
+# Function to import sessions.json
+import_sessions() {
+    local import_file
+    if [[ -n "$2" ]]; then
+        import_file="$2"
+    else
+        read -p "Enter import filename: " import_file
+    fi
+
+    if [[ ! -f "$import_file" ]]; then
+        echo "Import file not found: $import_file"
+        return 1
+    fi
+
+    if [[ ! -f "$SESSIONS_FILE" ]]; then
+        echo "No existing sessions.json, creating from import."
+        cp "$import_file" "$SESSIONS_FILE"
+        echo "Imported sessions from $import_file."
+        return 0
+    fi
+
+    # Backup current
+    local backup_file="$SESSIONS_FILE.backup-$(date +%Y%m%d_%H%M%S)"
+    cp "$SESSIONS_FILE" "$backup_file"
+    echo "Backed up current sessions to $backup_file."
+
+    # Overwrite with import
+    cp "$import_file" "$SESSIONS_FILE"
+    echo "Imported sessions from $import_file (overwrote existing)."
+}
+
+
+# Function to export sessions.json
+export_sessions() {
+    if [[ ! -f "$SESSIONS_FILE" ]]; then
+        echo "No sessions.json found to export."
+        return 1
+    fi
+
+    local export_file
+    if [[ -n "$2" ]]; then
+        export_file="$2"
+    else
+        read -p "Enter export filename (default: sessions-backup-$(date +%Y%m%d_%H%M%S).json): " export_file
+        export_file=${export_file:-"sessions-backup-$(date +%Y%m%d_%H%M%S).json"}
+    fi
+
+    cp "$SESSIONS_FILE" "$export_file"
+    echo "Exported sessions to $export_file."
+}
+
+# Function to import sessions.json
+import_sessions() {
+    local import_file
+    if [[ -n "$2" ]]; then
+        import_file="$2"
+    else
+        read -p "Enter import filename: " import_file
+    fi
+
+    if [[ ! -f "$import_file" ]]; then
+        echo "Import file not found: $import_file"
+        return 1
+    fi
+
+    if [[ ! -f "$SESSIONS_FILE" ]]; then
+        echo "No existing sessions.json, creating from import."
+        cp "$import_file" "$SESSIONS_FILE"
+        echo "Imported sessions from $import_file."
+        return 0
+    fi
+
+    # Backup current
+    local backup_file="$SESSIONS_FILE.backup-$(date +%Y%m%d_%H%M%S)"
+    cp "$SESSIONS_FILE" "$backup_file"
+    echo "Backed up current sessions to $backup_file."
+
+    # Overwrite with import
+    cp "$import_file" "$SESSIONS_FILE"
+    echo "Imported sessions from $import_file (overwrote existing)."
+}
+
 # Function to show help
 show_help() {
     cat << EOF
@@ -413,6 +814,8 @@ Options:
     -r, --remove     Remove SSH sessions interactively from sessions.json (with backup)
     -s, --sync       Sync sessions.json with ~/.ssh/config (updates from config, preserves passwords and groups)
     -g, --groups     Select and connect to all sessions in chosen group(s)
+    -e, --export     Export sessions.json to a backup file (prompts for filename if not provided)
+    -p, --import     Import sessions from a JSON file (overwrites current, backs up existing)
     -h, --help       Show this help message
 
 Without options:
@@ -467,6 +870,16 @@ case "$1" in
             echo "No groups selected."
             exit 0
         fi
+        ;;
+
+    --export|-e)
+        export_sessions
+        exit 0
+        ;;
+
+    --import|-p)
+        import_sessions
+        exit 0
         ;;
 esac
 
