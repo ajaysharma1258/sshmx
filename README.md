@@ -1,21 +1,26 @@
 # sshmx - SSH Session Manager for tmux
 
 `sshmx` is a lightweight Bash utility that helps you manage and launch SSH sessions inside [`tmux`](https://github.com/tmux/tmux).  
-It integrates with your existing `~/.ssh/config` or lets you add/remove sessions interactively, and provides a handy **tmux key binding** (`Ctrl+b C-s`) to quickly open SSH connections in popup windows.
+It integrates with your existing `~/.ssh/config` or lets you add/remove sessions interactively, and provides handy **tmux key bindings** (`Ctrl+b C-s` for sessions, `Ctrl+b C-g` for groups) to quickly open SSH connections in popup windows.
 
 ---
 
 ## ✨ Features
-- **Interactive SSH session selector** using [fzf](https://github.com/junegunn/fzf)
+- **Interactive SSH session selector** using [fzf](https://github.com/junegunn/fzf) with multi-select and preview
 - **Automatic JSON session store** (`~/.ssh/sessions.json`)
 - **Import from `~/.ssh/config`** or create sessions manually
 - **tmux integration**:
   - New SSH sessions open in dedicated `tmux` windows
-  - Popup window shortcut (`Ctrl+b C-s`) to run `sshmx`
+  - Popup window shortcuts (`Ctrl+b C-s` for sessions, `Ctrl+b C-g` for groups) to run `sshmx`
 - **Jump host (ProxyJump) support**
 - **Password and private key support** (passwords require `sshpass`)
+- **Group support**: Organize and connect to all sessions in a group at once
+- **Export/Import sessions** for backups and sharing
 - **Optional colored output** with [chromaterm](https://github.com/hSaria/Chromaterm)
+- **Host IP resolution** using `getent` (if available)
 - **Self-installing** script – just run once and it sets itself up
+- **Sync with `~/.ssh/config`** preserving passwords and groups
+- **Logging** for debugging parsing issues
 
 ---
 
@@ -25,6 +30,7 @@ It integrates with your existing `~/.ssh/config` or lets you add/remove sessions
 - [jq](https://github.com/stedolan/jq)
 - [sshpass](https://linux.die.net/man/1/sshpass) *(optional, for password auth)*
 - [chromaterm](https://github.com/hSaria/Chromaterm) *(optional, for colored output)*
+- `getent` *(optional, for hostname to IP resolution; usually available on Linux)*
 
 ---
 
@@ -34,13 +40,12 @@ Clone the repository and run the script with the `--install` flag:
 ```bash
 git clone https://github.com/yourusername/sshmx.git
 cd sshmx
-./sshmx.sh --install
-````
+./sshmx --install
+```
 
 This will:
-
 * Create a symlink to `~/.local/bin/sshmx`
-* Add `Ctrl+b C-s` binding to your `~/.tmux.conf` (or create one if missing)
+* Add `Ctrl+b C-s` and `Ctrl+b C-g` bindings to your `~/.tmux.conf` (or create one if missing)
 * Add bash completion for command flags
 * Add `~/.local/bin` to your PATH (via `~/.bashrc`)
 
@@ -50,24 +55,34 @@ Reload tmux:
 tmux source-file ~/.tmux.conf
 ```
 
+And source bashrc:
+
+```bash
+source ~/.bashrc
+```
+
 ---
 
 ## 🔑 Usage
 
 | Command                        | Description                                                       |
 | ------------------------------ | ----------------------------------------------------------------- |
-| `sshmx`                        | Launch interactive session selector with `fzf`                    |
+| `sshmx`                        | Launch interactive session selector with `fzf` (multi-select, preview) |
 | `sshmx --add` / `sshmx -a`     | Add a new SSH session interactively                               |
-| `sshmx --remove` / `sshmx -r`  | Remove one or more sessions interactively                         |
-| `sshmx --install` / `sshmx -i` | Install script, create symlink, add tmux binding, bash completion |
-| `sshmx --sync` / `sshmx -s`    | Sync `~/.ssh/sessions.json` with `~/.ssh/config`                  |
+| `sshmx --remove` / `sshmx -r`  | Remove one or more sessions interactively (with backup)           |
+| `sshmx --install` / `sshmx -i` | Install script, create symlink, add tmux bindings, bash completion |
+| `sshmx --sync` / `sshmx -s`    | Sync `~/.ssh/sessions.json` with `~/.ssh/config` (preserves passwords/groups) |
+| `sshmx --groups` / `sshmx -g`  | Select and connect to all sessions in chosen group(s)             |
+| `sshmx --export` / `sshmx -e`  | Export `sessions.json` to a backup file (prompts for filename)    |
+| `sshmx --import` / `sshmx -p`  | Import sessions from a JSON file (overwrites current, backs up existing) |
+| `sshmx --help` / `sshmx -h`    | Show this help message                                           |
 
 ---
 
 ### First run
-
-The script auto-generates a `sessions.json` file at `~/.ssh/sessions.json` by parsing your `~/.ssh/config`.
-If no sessions are found, it creates a sample entry.
+The script auto-generates a `sessions.json` file at `~/.ssh/sessions.json` by parsing your `~/.ssh/config`.  
+If no sessions are found, it creates a sample entry.  
+On first run without installation, it auto-installs itself.
 
 ---
 
@@ -77,9 +92,34 @@ If no sessions are found, it creates a sample entry.
 sshmx
 ```
 
-* Prompts you with an `fzf` selector of available sessions
+* Prompts you with an `fzf` selector of available sessions (multi-select, with preview of details)
 * Selected hosts open as **new windows** in your tmux session
 * If run outside tmux, a new session named `sshmx` is created
+* Supports keys, passwords (via `sshpass`), jump servers, and optional coloring with `chromaterm`
+* Hostnames are resolved to IPs if possible for faster connections
+
+Or use the tmux shortcut: `Ctrl+b C-s`
+
+---
+
+### Use Groups
+
+Organize sessions by adding a `group` field when using `--add`.  
+To connect to all in a group:
+
+```bash
+sshmx --groups
+```
+
+or
+
+```bash
+sshmx -g
+```
+
+* `fzf` shows unique groups with preview of sessions in each
+* Select one or more groups; all sessions in them open as tmux windows
+* Or use tmux shortcut: `Ctrl+b C-g`
 
 ---
 
@@ -95,7 +135,8 @@ or
 sshmx -a
 ```
 
-Prompts for hostname, user, port, key, etc., and appends to `sessions.json`.
+Prompts for session name, hostname/IP, user (default: current), port (default: 22), private key (optional), password (optional, insecure), jump server (optional), group (optional).  
+Appends to `sessions.json`.
 
 ---
 
@@ -111,8 +152,8 @@ or
 sshmx -r
 ```
 
-Lets you multi-select sessions to delete using `fzf`.
-A backup of `sessions.json` is automatically created.
+Lets you multi-select sessions to delete using `fzf` (with preview).  
+A timestamped backup of `sessions.json` is automatically created.
 
 ---
 
@@ -128,54 +169,83 @@ or
 sshmx -s
 ```
 
-Imports any missing hosts from your `~/.ssh/config` into `~/.ssh/sessions.json`.
+Parses `~/.ssh/config` for Host blocks (HostName, User, Port, IdentityFile, ProxyJump).  
+Updates or adds sessions in `~/.ssh/sessions.json`, preserving existing passwords and groups.  
+Resolves hostnames to IPs if possible. Logs details to `~/.ssh-session-manager.log`.
+
+---
+
+### Export/Import sessions
+
+**Export:**
+
+```bash
+sshmx --export
+```
+or
+
+```bash
+sshmx -e
+```
+
+Prompts for filename (default: `sessions-backup-YYYYMMDD_HHMMSS.json`); copies `sessions.json` there.
+
+**Import:**
+
+```bash
+sshmx --import /path/to/file.json
+```
+
+or
+
+```bash
+sshmx -i /path/to/file.json
+```
+
+Backs up current `sessions.json`, then overwrites with the import file.
 
 ---
 
 ## 🖥️ Example Workflow
-
-1. Press `Ctrl+b C-s` inside tmux
-2. `fzf` shows your saved sessions
-3. Select one or more hosts
+1. Press `Ctrl+b C-s` (or `C-g` for groups) inside tmux
+2. `fzf` shows your saved sessions (or groups) with previews
+3. Select one or more
 4. New tmux windows open, each running SSH into the chosen host(s)
 
 ---
 
 ## 📂 Files
-
-* `~/.ssh/sessions.json` → Stores your SSH sessions
-* `~/.ssh-session-manager.log` → Log file with parsing/debug info
-* `~/.tmux.conf` → Key binding automatically added here
+* `~/.ssh/sessions.json` → Stores your SSH sessions in JSON format: `{ "session_name": { "host": "...", "user": "...", "port": 22, "key": "...", "password": "...", "jump": "...", "group": "..." } }`
+* `~/.ssh-session-manager.log` → Log file with parsing and sync details
+* `~/.tmux.conf` → Key bindings automatically added here
 * `~/.local/bin/sshmx` → Symlink to the script for global usage
 
 ---
 
 ## ⚠️ Security Notes
-
-* Passwords are stored in plain text if you choose to use them
-  → **highly recommended** to use SSH keys instead
-* Temporary configs for jump hosts are auto-cleaned after use
+* Passwords are stored in plain text in `sessions.json` if you choose to use them  
+  → **Highly recommended** to use SSH keys instead (`IdentityFile` in config or key field)
+* Temporary configs for jump hosts are auto-cleaned (shredded) after use
+* Use export/import carefully; always review backups
+* For production, consider encrypting the JSON file or using a secure vault
 
 ---
 
 ## 🛠️ Roadmap / Ideas
-
-* [ ] Encrypted session store
+* [ ] Encrypted session store (e.g., with gpg or pass)
 * [x] On-demand sync with `~/.ssh/config` (`-s / --sync`)
 * [x] Advanced UI with [fzf preview](https://github.com/junegunn/fzf#preview-window)
-* [x] Grouped sessions (connect to multiple related servers at once)
+* [x] Grouped sessions (connect to multiple related servers at once with `-g`)
 * [ ] Multiplex commands (run the same command across selected hosts)
-* [x] Export/import session configs (share with teammates)
+* [x] Export/import session configs (share with teammates via `-e`/`-p`)
 
 ---
 
 ## 🤝 Contributing
-
-Pull requests are welcome!
+Pull requests are welcome!  
 If you find a bug or want a feature, open an [issue](../../issues).
 
 ---
 
 ## 📜 License
-
 MIT License © 2025 mrbooshehri
