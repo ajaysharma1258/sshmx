@@ -157,8 +157,13 @@ remove_session() {
         return 1
     fi
 
-    # Select sessions to remove using fzf multi-select
-    to_remove=$(echo "$session_names" | fzf --multi --reverse --prompt="Select sessions to remove: ")
+    # Select sessions to remove using fzf multi-select with preview
+    to_remove=$(echo "$session_names" | fzf --multi --reverse \
+  --prompt="Select SSH sessions: " \
+  --preview "jq -r '.\"{}\" | to_entries[] | \"\(.key): \(.value)\"' ~/.ssh/sessions.json" \
+  --preview-window=right:50:border
+  )
+
 
     if [[ -z "$to_remove" ]]; then
         echo "No session selected for removal."
@@ -699,6 +704,17 @@ import_sessions() {
     cp "$import_file" "$SESSIONS_FILE"
     echo "Imported sessions from $import_file (overwrote existing)."
 }
+# Function to preview session details
+preview_session() {
+  local session="$1"
+  jq -r --arg k "$session" '.[$k] | "Details for " + $k + ":\n  User: " + (.user // "N/A") + "\n  Host: " + (.host // "N/A") + "\n  Port: " + (.port | tostring // "22") + "\n  Group: " + (.group // "N/A") + (if .jump then "\n  Jump: " + .jump else "" end)' "$SESSIONS_FILE"
+}
+
+# Function to preview group sessions
+preview_group() {
+  local group="$1"
+  jq -r --arg g "$group" ' "Sessions in group " + $g + ":\n" + (to_entries | map(select(.value.group == $g) | "  - " + .key) | join("\n")) ' "$SESSIONS_FILE"
+}
 
 # Function to export sessions.json
 export_sessions() {
@@ -858,7 +874,7 @@ case "$1" in
 
     --groups|-g)
         groups=$(jq -r '.[] | .group' "$SESSIONS_FILE" | grep -v '^$' | sort -u)
-        selected_groups=$(echo "$groups" | fzf --multi --reverse --prompt="Select groups: ")
+        selected_groups=$(echo "$groups" | fzf --multi --reverse --prompt="Select groups: " --preview 'echo "Sessions in group {}:"; jq -r --arg g {} "to_entries[] | select(.value.group == $g) | \"  - \" + .key" ~/.ssh/sessions.json' --preview-window=right:50)
         if [[ -n "$selected_groups" ]]; then
             selected=$(echo "$selected_groups" | while IFS= read -r grp; do
                 if [[ -n "$grp" ]]; then
@@ -974,8 +990,14 @@ fi
 if [[ -z "${selected:-}" ]]; then
     session_names=$(jq -r 'keys[]' "$SESSIONS_FILE")
 
-    # Select sessions using fzf with multi-select
-    selected=$(echo "$session_names" | fzf --multi --reverse --prompt="Select SSH sessions: ")
+    # Select sessions using fzf with multi-select and preview
+    selected=$(echo "$session_names" | fzf --multi --reverse \
+  --prompt="Select SSH sessions: " \
+  --preview "jq -r '.\"{}\" | to_entries[] | \"\(.key): \(.value)\"' ~/.ssh/sessions.json" \
+  --preview-window=right:50)
+
+
+
 fi
 if [[ -z "$selected" ]]; then
     echo "No session selected."
