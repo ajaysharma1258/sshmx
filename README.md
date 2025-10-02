@@ -149,4 +149,4 @@ If you find a bug or want a feature, open an [issue](../../issues).
 
 ## 📜 License
 
-MIT License © 2025 Your Name
+MIT License © 2025 mrbooshehri
