@@ -74,7 +74,7 @@ _sshmx() {
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    opts="--install --add --remove -i -a -r"
+    opts="--install --add --remove --sync -i -a -r -s"
 
     if [[ ${cur} == -* ]] ; then
         COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
@@ -173,29 +173,9 @@ remove_session() {
 }
 
 # Check for flags
-case "$1" in
-    --install|-i)
-        install_script
-        exit 0
-        ;;
-    --add|-a)
-        add_session
-        exit 0
-        ;;
-    --remove|-r)
-        remove_session
-        exit 0
-        ;;
-esac
 
-# Auto-install if symlink doesn't exist
-if [[ ! -L "$HOME/.local/bin/$SCRIPT_NAME" ]]; then
-    echo "First run detected. Installing $SCRIPT_NAME to PATH and tmux.conf..."
-    install_script
-fi
-
-# Function to create sample sessions.json
-create_sample_sessions() {
+# Function to parse ~/.ssh/config to temporary JSON
+parse_config_to_json() {
     local config_file="$HOME/.ssh/config"
     local temp_json=$(mktemp)
     echo '{}' > "$temp_json"
@@ -330,8 +310,50 @@ create_sample_sessions() {
         fi
     fi
 
-    # If no hosts were added, add sample
-    local num_hosts=$(jq 'keys | length' "$temp_json")
+    echo "$temp_json"
+}
+
+# Function to sync sessions.json with ~/.ssh/config
+sync_sessions() {
+    local temp_json=$(parse_config_to_json)
+
+    # Sync existing sessions with config
+    if [[ -f "$SESSIONS_FILE" ]]; then
+        echo "$(date): Syncing with existing $SESSIONS_FILE" >> "$LOG_FILE"
+        local config_keys
+        config_keys=$(jq -r 'keys[]' "$temp_json" 2>/dev/null || true)
+        while IFS= read -r key; do
+            if [[ -n "$key" ]]; then
+                local hn u p id_key j current_pw
+                hn=$(jq -r --arg k "$key" '.[$k].host // empty' "$temp_json")
+                u=$(jq -r --arg k "$key" '.[$k].user // empty' "$temp_json")
+                p=$(jq -r --arg k "$key" '.[$k].port // 22' "$temp_json")
+                id_key=$(jq -r --arg k "$key" '.[$k].key // empty' "$temp_json")
+                j=$(jq -r --arg k "$key" '.[$k].jump // empty' "$temp_json")
+                current_pw=$(jq -r --arg k "$key" '.[$k].password // ""' "$SESSIONS_FILE")
+                echo "$(date): Updating session '$key' from config (preserving password)" >> "$LOG_FILE"
+                jq --arg h "$key" \
+                   --arg hn "$hn" \
+                   --arg u "$u" \
+                   --arg p "$p" \
+                   --arg ky "$id_key" \
+                   --arg pw "$current_pw" \
+                   --arg j "$j" \
+                   '.[$h] = {host: $hn, user: $u, port: ($p | tonumber), key: $ky, password: $pw, jump: $j}' \
+                   "$SESSIONS_FILE" > "${SESSIONS_FILE}.tmp" && mv "${SESSIONS_FILE}.tmp" "$SESSIONS_FILE" || echo "Error updating $key" >> "$LOG_FILE"
+            fi
+        done <<< "$config_keys"
+    else
+        echo "$(date): No existing $SESSIONS_FILE, creating from config" >> "$LOG_FILE"
+    fi
+    
+    # Ensure SESSIONS_FILE exists by copying if necessary
+    if [[ ! -f "$SESSIONS_FILE" ]]; then
+        cp "$temp_json" "$SESSIONS_FILE"
+    fi
+
+    # Check if sessions empty after sync, add sample
+    local num_hosts=$(jq 'keys | length' "$SESSIONS_FILE")
     if [[ "$num_hosts" -eq 0 ]]; then
         local sample_host="example.com"
         local resolved_sample="$sample_host"
@@ -344,7 +366,7 @@ create_sample_sessions() {
             fi
         fi
 
-        echo "$(date): No hosts found in config, adding sample host." >> "$LOG_FILE"
+        echo "$(date): No sessions found, adding sample host." >> "$LOG_FILE"
         jq --arg h "SampleHost" \
            --arg hn "$resolved_sample" \
            --arg u "youruser" \
@@ -352,23 +374,78 @@ create_sample_sessions() {
            --arg k "~/.ssh/id_rsa" \
            --arg j "" \
            '.[$h] = {host: $hn, user: $u, port: ($p | tonumber), key: $k, password: "", jump: $j}' \
-           "$temp_json" > "${temp_json}.tmp" && mv "${temp_json}.tmp" "$temp_json"
+           "$SESSIONS_FILE" > "${SESSIONS_FILE}.tmp" && mv "${SESSIONS_FILE}.tmp" "$SESSIONS_FILE"
     else
-        echo "$(date): Added $num_hosts hosts from config." >> "$LOG_FILE"
+        local config_hosts=$(jq 'keys | length' "$temp_json" 2>/dev/null || echo 0)
+        echo "$(date): Synced $config_hosts hosts from config, total $num_hosts sessions." >> "$LOG_FILE"
     fi
 
-    # Write to file
-    cp "$temp_json" "$SESSIONS_FILE"
-    rm -f "$temp_json" "${temp_json}.tmp"
-    echo "Created sample $SESSIONS_FILE based on ~/.ssh/config (or default sample)."
+    rm -f "$temp_json"
+    echo "Synced $SESSIONS_FILE with ~/.ssh/config."
     echo "$(date): Generated JSON content:" >> "$LOG_FILE"
     cat "$SESSIONS_FILE" >> "$LOG_FILE"
     echo "$(date): Config parsing complete" >> "$LOG_FILE"
 }
 
-# Check if sessions file exists
+case "$1" in
+    --install|-i)
+        install_script
+        exit 0
+        ;;
+    --add|-a)
+        add_session
+        exit 0
+        ;;
+    --remove|-r)
+        remove_session
+        exit 0
+        ;;
+
+    --sync|-s)
+        sync_sessions
+        exit 0
+        ;;
+esac
+
+# Auto-install if symlink doesn't exist
+if [[ ! -L "$HOME/.local/bin/$SCRIPT_NAME" ]]; then
+    echo "First run detected. Installing $SCRIPT_NAME to PATH and tmux.conf..."
+    install_script
+fi
+
+
+# Create sessions file if it doesn't exist
 if [[ ! -f "$SESSIONS_FILE" ]]; then
-    create_sample_sessions
+    local temp_json=$(parse_config_to_json)
+    cp "$temp_json" "$SESSIONS_FILE"
+    rm -f "$temp_json"
+    local num_hosts=$(jq 'keys | length' "$SESSIONS_FILE")
+    if [[ "$num_hosts" -eq 0 ]]; then
+        local sample_host="example.com"
+        local resolved_sample="$sample_host"
+        if [[ ! "$sample_host" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            if command -v getent &> /dev/null; then
+                local temp_ip=$(getent hosts "$sample_host" | awk '{print $1}' | head -n1)
+                if [[ -n "$temp_ip" && "$temp_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                    resolved_sample="$temp_ip"
+                fi
+            fi
+        fi
+
+        echo "$(date): No sessions found, adding sample host." >> "$LOG_FILE"
+        jq --arg h "SampleHost" \
+           --arg hn "$resolved_sample" \
+           --arg u "youruser" \
+           --arg p "22" \
+           --arg k "~/.ssh/id_rsa" \
+           --arg j "" \
+           '.[$h] = {host: $hn, user: $u, port: ($p | tonumber), key: $k, password: "", jump: $j}' \
+           "$SESSIONS_FILE" > "${SESSIONS_FILE}.tmp" && mv "${SESSIONS_FILE}.tmp" "$SESSIONS_FILE"
+    fi
+    echo "Created $SESSIONS_FILE based on ~/.ssh/config (or default sample)."
+    echo "$(date): Generated JSON content:" >> "$LOG_FILE"
+    cat "$SESSIONS_FILE" >> "$LOG_FILE"
+    echo "$(date): Config parsing complete" >> "$LOG_FILE"
 fi
 
 # Check if jq is available (required for JSON parsing)
