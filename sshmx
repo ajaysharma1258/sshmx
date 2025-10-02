@@ -404,6 +404,7 @@ Options:
     -a, --add        Add a new SSH session interactively to sessions.json
     -r, --remove     Remove SSH sessions interactively from sessions.json (with backup)
     -s, --sync       Sync sessions.json with ~/.ssh/config (updates from config, preserves passwords and groups)
+    -g, --groups     Select and connect to all sessions in chosen group(s)
     -h, --help       Show this help message
 
 Without options:
@@ -411,6 +412,7 @@ Without options:
     - Opens fzf multi-select for sessions
     - Connects selected sessions as new tmux windows in current session (if in tmux) or "sshmx" session
     - Supports keys, passwords (sshpass), jump servers (ProxyJump), chromaterm coloring, IP resolution, groups (optional field for organization)
+    - Use -g to select groups instead of individual sessions
 
 Sessions stored in ~/.ssh/sessions.json (JSON format: {host, user, port, key, password, jump, group}).
 Logs parsing to ~/.ssh-session-manager.log.
@@ -440,6 +442,22 @@ case "$1" in
     --sync|-s)
         sync_sessions
         exit 0
+        ;;
+
+    --groups|-g)
+        groups=$(jq -r '.[] | .group' "$SESSIONS_FILE" | grep -v '^$' | sort -u)
+        selected_groups=$(echo "$groups" | fzf --multi --reverse --prompt="Select groups: ")
+        if [[ -n "$selected_groups" ]]; then
+            selected=$(echo "$selected_groups" | while IFS= read -r grp; do
+                if [[ -n "$grp" ]]; then
+                    jq -r --arg g "$grp" 'to_entries[] | select(.value.group == $g) | .key' "$SESSIONS_FILE"
+                fi
+            done | sort -u | grep -v '^$')
+        fi
+        if [[ -z "${selected:-}" ]]; then
+            echo "No groups selected."
+            exit 0
+        fi
         ;;
 esac
 
@@ -530,13 +548,13 @@ session_exists() {
 if [[ -z "$TMUX" ]] && ! session_exists; then
     tmux new-session -d -s "$TMUX_SESSION"
 fi
+# Get list of session names (keys from JSON) if not already selected via flag
+if [[ -z "${selected:-}" ]]; then
+    session_names=$(jq -r 'keys[]' "$SESSIONS_FILE")
 
-# Get list of session names (keys from JSON)
-session_names=$(jq -r 'keys[]' "$SESSIONS_FILE")
-
-# Select sessions using fzf with multi-select
-selected=$(echo "$session_names" | fzf --multi --reverse --prompt="Select SSH sessions: ")
-
+    # Select sessions using fzf with multi-select
+    selected=$(echo "$session_names" | fzf --multi --reverse --prompt="Select SSH sessions: ")
+fi
 if [[ -z "$selected" ]]; then
     echo "No session selected."
     exit 0
