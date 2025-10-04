@@ -4,7 +4,7 @@
 SESSIONS_FILE="$HOME/.ssh/sessions.json"
 
 # Log file for parsing
-LOG_FILE="$HOME/.ssh-session-manager.log"
+LOG_FILE="$HOME/.sshmx.log"
 
 # Script name for self-reference
 SCRIPT_NAME="sshmx"
@@ -473,6 +473,74 @@ import_sessions() {
     echo "Imported sessions from $import_file (overwrote existing)."
 }
 
+# Function to multiplex input
+
+multiplex() {
+    local session="sshmx"
+    local target_window="sync-input"
+
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [INFO] Starting multiplex in session '$session'" >> "$LOG_FILE"
+
+    # 1. List windows with IDs
+    local selection
+
+    selection=$(tmux list-windows -t "$session" -F "#S:#I:#W:#{window_id}" \
+        | grep -v "^${session}:[0-9]\+:${target_window}:" \
+        | fzf --multi \
+            --prompt="Select windows > " \
+            --reverse \
+            --preview '
+                win_id=$(echo {} | cut -d: -f4);
+                pane=$(tmux list-panes -t "$win_id" -F "#{pane_id}" 2>/dev/null | head -n1);
+                [ -n "$pane" ] && tmux capture-pane -pt "$pane" -S -50 | tail -n 10 || echo "No pane found"
+            ' \
+            --preview-window=down:70%) || return 1
+
+    if [[ -z "$selection" ]]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S') [WARN] No windows selected, aborting." >> "$LOG_FILE"
+        return 1
+    fi
+
+    IFS=$'\n' read -rd '' -a windows <<< "$selection"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [INFO] Selected windows: ${windows[*]}" >> "$LOG_FILE"
+
+    # 2. Rename first selected window
+    first="${windows[0]}"
+    first_id=$(echo "$first" | cut -d: -f4)
+    tmux rename-window -t "$first_id" "$target_window"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [INFO] Renamed $first_id to '$target_window'" >> "$LOG_FILE"
+
+    # 3. Join all panes from remaining windows
+    for win in "${windows[@]:1}"; do
+        win_id=$(echo "$win" | cut -d: -f4)
+        echo "$(date '+%Y-%m-%d %H:%M:%S') [INFO] Processing $win_id" >> "$LOG_FILE"
+
+        # Get all pane IDs
+        panes=($(tmux list-panes -t "$win_id" -F "#{pane_id}" 2>/dev/null))
+        echo "$(date '+%Y-%m-%d %H:%M:%S') [DEBUG] Found panes: ${panes[*]}" >> "$LOG_FILE"
+
+        for pane in "${panes[@]}"; do
+            tmux join-pane -s "$pane" -t "${session}:${target_window}"
+            echo "$(date '+%Y-%m-%d %H:%M:%S') [INFO] Joined pane $pane into $target_window" >> "$LOG_FILE"
+        done
+
+        # Kill empty window
+        tmux kill-window -t "$win_id" 2>/dev/null
+        echo "$(date '+%Y-%m-%d %H:%M:%S') [INFO] Killed window $win_id" >> "$LOG_FILE"
+    done
+
+    # 4. Enable sync
+    tmux setw -t "${session}:${target_window}" synchronize-panes on
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [INFO] Enabled synchronize-panes in $target_window" >> "$LOG_FILE"
+
+    # 5. Apply layout
+    tmux select-layout -t "${session}:${target_window}" tiled
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [INFO] Applied tiled layout to $target_window" >> "$LOG_FILE"
+}
+
+
+
+
 # Function to preview session details
 preview_session() {
   local session="$1"
@@ -544,6 +612,11 @@ case "$1" in
         group_connect
         ;;
 
+    --multiplex|-m)
+        multiplex
+        exit 0
+        ;;
+
     --export|-e)
         export_sessions
         exit 0
@@ -560,7 +633,6 @@ if [[ ! -L "$HOME/.local/bin/$SCRIPT_NAME" ]]; then
     echo "First run detected. Installing $SCRIPT_NAME to PATH and tmux.conf..."
     install_script
 fi
-
 
 # Create sessions file if it doesn't exist
 if [[ ! -f "$SESSIONS_FILE" ]]; then
@@ -627,10 +699,10 @@ fi
 # Determine tmux session name
 if [[ -n "$TMUX" ]]; then
     TMUX_SESSION=$(tmux display-message -p '#S')
-    echo "Running inside tmux session '$TMUX_SESSION'. New connections will add windows to this session."
+    echo "$(date): Running inside tmux session '$TMUX_SESSION'. New connections will add windows to this session." >> $LOG_FILE
 else
     TMUX_SESSION="sshmx"
-    echo "Running outside tmux. Using dedicated session '$TMUX_SESSION'."
+    echo "$(date): Running outside tmux. Using dedicated session '$TMUX_SESSION'." >> $LOG_FILE
 fi
 
 # Function to check if tmux session exists
@@ -737,7 +809,7 @@ EOF
         chmod +x "$wrapper"
 
         ssh_cmd="$wrapper"
-        echo "Created temp config $temp_config and wrapper $wrapper for jump connection to '$sel'. Files auto-cleaned after SSH exits."
+        echo "$(date): Created temp config $temp_config and wrapper $wrapper for jump connection to '$sel'. Files auto-cleaned after SSH exits." >> $LOG_FILE
     else
         # No jump, standard SSH
         ssh_cmd="ssh $user@$connect_host"
