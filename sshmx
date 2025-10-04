@@ -405,6 +405,24 @@ sync_sessions() {
     echo "$(date): Config parsing complete" >> "$LOG_FILE"
 }
 
+# Function to connect to a group
+
+group_connect() {
+    groups=$(jq -r '.[] | .group' "$SESSIONS_FILE" | grep -v '^$' | sort -u)
+    selected_groups=$(echo "$groups" | fzf --multi --reverse --prompt="Select groups to connect to all hosts: ")
+    if [[ -n "$selected_groups" ]]; then
+        selected=$(echo "$selected_groups" | while IFS= read -r grp; do
+            if [[ -n "$grp" ]]; then
+                jq -r --arg g "$grp" 'to_entries[] | select(.value.group == $g) | .key' "$SESSIONS_FILE"
+            fi
+        done | sort -u | grep -v '^$')
+    fi
+    if [[ -z "${selected:-}" ]]; then
+        echo "No groups selected."
+        exit 0
+    fi
+}
+
 # Function to export sessions.json
 export_sessions() {
     if [[ ! -f "$SESSIONS_FILE" ]]; then
@@ -523,19 +541,7 @@ case "$1" in
         ;;
 
     --groups|-g)
-        groups=$(jq -r '.[] | .group' "$SESSIONS_FILE" | grep -v '^$' | sort -u)
-        selected_groups=$(echo "$groups" | fzf --multi --reverse --prompt="Select groups to connect to all hosts: ")
-        if [[ -n "$selected_groups" ]]; then
-            selected=$(echo "$selected_groups" | while IFS= read -r grp; do
-                if [[ -n "$grp" ]]; then
-                    jq -r --arg g "$grp" 'to_entries[] | select(.value.group == $g) | .key' "$SESSIONS_FILE"
-                fi
-            done | sort -u | grep -v '^$')
-        fi
-        if [[ -z "${selected:-}" ]]; then
-            echo "No groups selected."
-            exit 0
-        fi
+        group_connect
         ;;
 
     --export|-e)
