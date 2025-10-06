@@ -56,7 +56,6 @@ install_script() {
     else
         echo "Tmux binding already exists in $tmux_conf."
     fi
-
     # Append tmux groups binding if not already present
     if ! grep -q "bind-key C-g display-popup.*sshmx.*-g" "$tmux_conf" 2>/dev/null; then
         echo 'bind-key C-g display-popup -E -w 70% -d "#{pane_current_path}" "sshmx -g"' >> "$tmux_conf"
@@ -65,6 +64,21 @@ install_script() {
         echo "Tmux groups binding already exists in $tmux_conf."
     fi
 
+    # Append tmux binding for demultiplex (Ctrl+b C-q) if not already present
+    if ! grep -q "bind-key C-q run-shell 'bash sshmx -d'" "$tmux_conf" 2>/dev/null; then
+        echo "bind-key C-q run-shell 'bash sshmx -d'" >> "$tmux_conf"
+        echo "Tmux demultiplex binding added to $tmux_conf."
+    else
+        echo "Tmux demultiplex binding already exists in $tmux_conf."
+    fi
+
+    # Append tmux binding for multiplex (Ctrl+b C-m) if not already present
+    if ! grep -q "bind-key C-m display-popup.*sshmx -m" "$tmux_conf" 2>/dev/null; then
+        echo 'bind-key C-m display-popup -E -w 90% -h 80% -d "#{pane_current_path}" "sshmx -m"' >> "$tmux_conf"
+        echo "Tmux multiplex binding added to $tmux_conf."
+    else
+        echo "Tmux multiplex binding already exists in $tmux_conf."
+    fi
     # Add .local/bin to PATH if not already
     if ! grep -q "export PATH=\"\$HOME/.local/bin:" "$HOME/.bashrc" 2>/dev/null; then
         echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
