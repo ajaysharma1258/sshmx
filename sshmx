@@ -676,22 +676,24 @@ Usage: $SCRIPT_NAME [OPTIONS]
 $SCRIPT_NAME is a bash script to manage SSH connections using fzf for selection and tmux for sessions.
 
 Options:
-    -i, --install    Install script to ~/.local/bin, add to PATH in ~/.bashrc, and add tmux binding (Ctrl+b C-s)
-    -a, --add        Add a new SSH session interactively to sessions.json
-    -r, --remove     Remove SSH sessions interactively from sessions.json (with backup)
-    -s, --sync       Sync sessions.json with ~/.ssh/config (updates from config, preserves passwords and groups)
-    -g, --groups     Select and connect to all sessions in chosen group(s)
-    -e, --export     Export sessions.json to a backup file (prompts for filename if not provided)
-    -p, --import     Import sessions from a JSON file (overwrites current, backs up existing)
-    -h, --help       Show this help message
+    -i, --install        Install script to ~/.local/bin, add to PATH in ~/.bashrc, and add tmux binding (Ctrl+b C-s)
+    -a, --add            Add a new SSH session interactively to sessions.json
+    -r, --remove         Remove SSH sessions interactively from sessions.json (with backup)
+    -s, --sync           Sync sessions.json with ~/.ssh/config (updates from config, preserves passwords and groups)
+    -g, --groups         Select and connect to all sessions in chosen group(s)
+    -m, --multiplex      Open multiplex selector (Ctrl+b C-m) to combine windows into a synchronized pane window
+    -d, --demultiplex    Restore panes from a multiplexed window back to separate windows (Ctrl+b C-q)
+    -e, --export         Export sessions.json to a backup file (prompts for filename if not provided)
+    -p, --import         Import sessions from a JSON file (overwrites current, backs up existing)
+    -h, --help           Show this help message
 
 Without options:
     - If sessions.json doesn't exist, creates it from ~/.ssh/config (or sample)
     - Opens fzf multi-select for sessions
     - Connects selected sessions as new tmux windows in current session (if in tmux) or "sshmx" session
     - Supports keys, passwords (sshpass), jump servers (ProxyJump), chromaterm coloring, IP resolution, groups (optional field for organization)
-    - Use -g to select groups instead of individual sessions
-    - Tmux shortcuts: Ctrl+b C-s (individual sessions), Ctrl+b C-g (group sessions)
+    - Use -g to select groups, -m for multiplex, -d for demultiplex
+    - Tmux shortcuts: Ctrl+b C-s (sessions), Ctrl+b C-g (groups), Ctrl+b C-m (multiplex), Ctrl+b C-q (demultiplex)
 
 Sessions stored in ~/.ssh/sessions.json (JSON format: {host, user, port, key, password, jump, group}).
 Logs parsing to ~/.ssh-session-manager.log.
