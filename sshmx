@@ -473,72 +473,173 @@ import_sessions() {
     echo "Imported sessions from $import_file (overwrote existing)."
 }
 
-# Function to multiplex input
-
+# multiplex: merge selected windows into a single "sync-input" window
 multiplex() {
     local session="sshmx"
     local target_window="sync-input"
+    local LOG_FILE="${HOME}/.sshmx.log"
+    local MAP_FILE="${HOME}/.sshmx-mapping"
 
-    echo "$(date '+%Y-%m-%d %H:%M:%S') [INFO] Starting multiplex in session '$session'" >> "$LOG_FILE"
+    echo "$(date '+%F %T') [INFO] Starting multiplex" >> "$LOG_FILE"
 
-    # 1. List windows with IDs
-    local selection
-
-    selection=$(tmux list-windows -t "$session" -F "#S:#I:#W:#{window_id}" \
-        | grep -v "^${session}:[0-9]\+:${target_window}:" \
-        | fzf --multi \
-            --prompt="Select windows > " \
-            --reverse \
-            --preview '
-                win_id=$(echo {} | cut -d: -f4);
-                pane=$(tmux list-panes -t "$win_id" -F "#{pane_id}" 2>/dev/null | head -n1);
-                [ -n "$pane" ] && tmux capture-pane -pt "$pane" -S -50 | tail -n 10 || echo "No pane found"
-            ' \
-            --preview-window=down:70%) || return 1
-
-    if [[ -z "$selection" ]]; then
-        echo "$(date '+%Y-%m-%d %H:%M:%S') [WARN] No windows selected, aborting." >> "$LOG_FILE"
+    # 0) safety: don't allow a pre-existing sync-input
+    if tmux list-windows -t "$session" -F "#{window_name}" \
+       | grep -xq "$target_window"; then
+        echo "$(date '+%F %T') [WARN] $target_window already exists; aborting multiplex." | tee -a "$LOG_FILE"
         return 1
     fi
 
-    IFS=$'\n' read -rd '' -a windows <<< "$selection"
-    echo "$(date '+%Y-%m-%d %H:%M:%S') [INFO] Selected windows: ${windows[*]}" >> "$LOG_FILE"
+    # 1) pick windows (we include window_id to keep references stable)
+    local selection
+    selection=$(tmux list-windows -t "$session" -F "#S:#I:#W:#{window_id}" \
+        | fzf --multi --reverse --prompt="Select windows > " \
+              --preview '
+                  win_id=$(echo {} | cut -d: -f4);
+                  pane=$(tmux list-panes -t "$win_id" -F "#{pane_id}" 2>/dev/null | head -n1);
+                  [ -n "$pane" ] && tmux capture-pane -pt "$pane" -S -20 || echo "No pane found"
+              ' --preview-window=down:70%) || return 1
 
-    # 2. Rename first selected window
-    first="${windows[0]}"
-    first_id=$(echo "$first" | cut -d: -f4)
-    tmux rename-window -t "$first_id" "$target_window"
-    echo "$(date '+%Y-%m-%d %H:%M:%S') [INFO] Renamed $first_id to '$target_window'" >> "$LOG_FILE"
+    [[ -z "$selection" ]] && echo "$(date '+%F %T') [INFO] No windows selected." >> "$LOG_FILE" && return 1
 
-    # 3. Join all panes from remaining windows
-    for win in "${windows[@]:1}"; do
-        win_id=$(echo "$win" | cut -d: -f4)
-        echo "$(date '+%Y-%m-%d %H:%M:%S') [INFO] Processing $win_id" >> "$LOG_FILE"
+    # prepare mapping (overwrite any old mapping)
+    : > "$MAP_FILE"
+    echo "$(date '+%F %T') [INFO] Mapping file: $MAP_FILE" >> "$LOG_FILE"
 
-        # Get all pane IDs
-        panes=($(tmux list-panes -t "$win_id" -F "#{pane_id}" 2>/dev/null))
-        echo "$(date '+%Y-%m-%d %H:%M:%S') [DEBUG] Found panes: ${panes[*]}" >> "$LOG_FILE"
+    # read selections into array
+    mapfile -t windows <<< "$selection"
 
-        for pane in "${panes[@]}"; do
-            tmux join-pane -s "$pane" -t "${session}:${target_window}"
-            echo "$(date '+%Y-%m-%d %H:%M:%S') [INFO] Joined pane $pane into $target_window" >> "$LOG_FILE"
-        done
+    # 2) handle the first selected window: record its panes' mapping BEFORE rename
+    local first="${windows[0]}"
+    local first_id=$(echo "$first" | cut -d: -f4)
+    local first_name=$(echo "$first" | cut -d: -f3)
+    if [[ -z "$first_id" ]]; then
+        echo "$(date '+%F %T') [ERROR] Unable to parse first window id. Aborting." >> "$LOG_FILE"
+        return 1
+    fi
 
-        # Kill empty window
-        tmux kill-window -t "$win_id" 2>/dev/null
-        echo "$(date '+%Y-%m-%d %H:%M:%S') [INFO] Killed window $win_id" >> "$LOG_FILE"
+    # record every pane in first window
+    local p
+    mapfile -t first_panes < <(tmux list-panes -t "$first_id" -F "#{pane_id}" 2>/dev/null || true)
+    for p in "${first_panes[@]}"; do
+        # format: pane_id|original_window_name
+        printf "%s|%s\n" "$p" "$first_name" >> "$MAP_FILE"
+        echo "$(date '+%F %T') [DEBUG] MAPPED %s -> %s" "$p" "$first_name" >> "$LOG_FILE"
     done
 
-    # 4. Enable sync
-    tmux setw -t "${session}:${target_window}" synchronize-panes on
-    echo "$(date '+%Y-%m-%d %H:%M:%S') [INFO] Enabled synchronize-panes in $target_window" >> "$LOG_FILE"
+    # rename the first selected window to target
+    tmux rename-window -t "$first_id" "$target_window"
+    echo "$(date '+%F %T') [INFO] Renamed window id $first_id -> $target_window" >> "$LOG_FILE"
 
-    # 5. Apply layout
+    # 3) for each remaining selected window: record panes, then join them into target
+    local i
+    for (( i=1; i<${#windows[@]}; i++ )); do
+        local w="${windows[$i]}"
+        local win_id=$(echo "$w" | cut -d: -f4)
+        local win_name=$(echo "$w" | cut -d: -f3)
+
+        echo "$(date '+%F %T') [INFO] Processing window id $win_id (name: $win_name)" >> "$LOG_FILE"
+
+        # list panes in that window (by pane_id)
+        mapfile -t panes < <(tmux list-panes -t "$win_id" -F "#{pane_id}" 2>/dev/null || true)
+        if [[ ${#panes[@]} -eq 0 ]]; then
+            echo "$(date '+%F %T') [WARN] No panes found for window id $win_id" >> "$LOG_FILE"
+            continue
+        fi
+
+        for p in "${panes[@]}"; do
+            # record mapping before moving
+            printf "%s|%s\n" "$p" "$win_name" >> "$MAP_FILE"
+            echo "$(date '+%F %T') [DEBUG] MAPPED %s -> %s" "$p" "$win_name" >> "$LOG_FILE"
+
+            # move the pane into the target window
+            tmux join-pane -s "$p" -t "${session}:${target_window}"
+            if [[ $? -ne 0 ]]; then
+                echo "$(date '+%F %T') [ERROR] join-pane failed for pane $p" >> "$LOG_FILE"
+            else
+                echo "$(date '+%F %T') [INFO] Joined pane $p into ${session}:${target_window}" >> "$LOG_FILE"
+            fi
+            # slight pause can help with tmux state consistency on busy systems
+            sleep 0.03
+        done
+
+        # kill the now-empty original window (best-effort)
+        tmux kill-window -t "$win_id" 2>/dev/null
+        echo "$(date '+%F %T') [INFO] Killed original window id $win_id" >> "$LOG_FILE"
+    done
+
+    # 4) enable sync and tidy layout
+    tmux setw -t "${session}:${target_window}" synchronize-panes on
     tmux select-layout -t "${session}:${target_window}" tiled
-    echo "$(date '+%Y-%m-%d %H:%M:%S') [INFO] Applied tiled layout to $target_window" >> "$LOG_FILE"
+    echo "$(date '+%F %T') [INFO] Completed multiplex; mapping saved to $MAP_FILE" >> "$LOG_FILE"
 }
 
+# demultiplex: reverse the mapping file -> break panes into windows and restore names
+demultiplex() {
+    local session="sshmx"
+    local target_window="sync-input"
+    local LOG_FILE="${HOME}/.sshmx.log"
+    local MAP_FILE="${HOME}/.sshmx-mapping"
 
+    echo "$(date '+%F %T') [INFO] Starting demultiplex" >> "$LOG_FILE"
+
+    if [[ ! -f "$MAP_FILE" ]]; then
+        echo "$(date '+%F %T') [WARN] No mapping file ($MAP_FILE) found. Aborting." >> "$LOG_FILE"
+        return 1
+    fi
+
+    # process each mapping line: pane_id|original_window_name
+    while IFS='|' read -r pane orig_name; do
+        # skip empty lines
+        [[ -z "$pane" ]] && continue
+
+        # confirm pane exists somewhere (list all panes)
+        if ! tmux list-panes -a -F "#{pane_id}" | grep -Fxq "$pane"; then
+            echo "$(date '+%F %T') [WARN] Pane $pane not found; skipping" >> "$LOG_FILE"
+            continue
+        fi
+
+        # break the pane into a new window (detached)
+        tmux break-pane -s "$pane" -d
+        if [[ $? -ne 0 ]]; then
+            echo "$(date '+%F %T') [ERROR] break-pane failed for $pane" >> "$LOG_FILE"
+            continue
+        fi
+
+        # find the new window id which now contains this pane
+        new_win_id=$(tmux list-panes -a -F "#{pane_id} #{window_id}" \
+                     | awk -v p="$pane" '$1==p { print $2; exit }')
+
+        if [[ -z "$new_win_id" ]]; then
+            echo "$(date '+%F %T') [ERROR] Could not find new window for pane $pane" >> "$LOG_FILE"
+            continue
+        fi
+
+        # restore original name (if empty, use fallback)
+        if [[ -z "$orig_name" ]]; then
+            orig_name="restored-window"
+        fi
+
+        # attempt to rename
+        tmux rename-window -t "$new_win_id" "$orig_name"
+        if [[ $? -ne 0 ]]; then
+            echo "$(date '+%F %T') [WARN] rename-window failed for $new_win_id -> $orig_name; trying fallback name" >> "$LOG_FILE"
+            tmux rename-window -t "$new_win_id" "${orig_name}-restored" 2>/dev/null
+        fi
+
+        echo "$(date '+%F %T') [INFO] Restored pane $pane -> window '$orig_name' (id: $new_win_id)" >> "$LOG_FILE"
+    done < "$MAP_FILE"
+
+    # remove the mapping file after successful demultiplex
+    rm -f "$MAP_FILE"
+    echo "$(date '+%F %T') [INFO] Demultiplex finished; removed mapping file $MAP_FILE" >> "$LOG_FILE"
+
+    # finally, if sync-input still exists and has zero panes, kill it
+    if tmux list-windows -t "$session" -F "#{window_name}:#{window_panes}" \
+       | awk -F: -v w="$target_window" '$1==w && $2==0 { exit 0 } END { if (NR==0) exit 1 }'; then
+        tmux kill-window -t "${session}:${target_window}" 2>/dev/null
+        echo "$(date '+%F %T') [INFO] Removed empty $target_window window" >> "$LOG_FILE"
+    fi
+}
 
 
 # Function to preview session details
@@ -615,6 +716,10 @@ case "$1" in
     --multiplex|-m)
         multiplex
         exit 0
+        ;;
+
+    --demultiplex|-d)
+        demultiplex
         ;;
 
     --export|-e)
