@@ -140,6 +140,8 @@ add_session() {
     read -p "Jump server (optional): " jump
     read -p "Group (optional): " group
     group=${group:-""}
+    read -p "Background color(optional): " bg_color
+    read -p "Foreground color(optional): " fg_color
 
     # Add to JSON
     jq --arg n "$name" \
@@ -150,7 +152,9 @@ add_session() {
        --arg pw "$password" \
        --arg j "$jump" \
        --arg g "$group" \
-       '.[$n] = {host: $h, user: $u, port: ($p | tonumber), key: $k, password: $pw, jump: $j, group: $g}' \
+       --arg bg "$bg_color" \
+       --arg fg "$fg_color" \
+       '.[$n] = {host: $h, user: $u, port: ($p | tonumber), key: $k, password: $pw, jump: $j, group: $g, bg_color: $bg, fg_color: $fg}' \
        "$SESSIONS_FILE" > "$SESSIONS_FILE.tmp" && mv "$SESSIONS_FILE.tmp" "$SESSIONS_FILE"
 
     echo "Added session '$name' to $SESSIONS_FILE."
@@ -261,7 +265,7 @@ parse_config_to_json() {
                        --arg p "$port" \
                        --arg k "$key" \
                        --arg j "$jump" \
-                       '.[$h] = {host: $hn, user: $u, port: ($p | tonumber), key: $k, password: "", jump: $j, group: ""}' \
+                       '.[$h] = {host: $hn, user: $u, port: ($p | tonumber), key: $k, password: "", jump: $j, group: "", bg_color: "", fg_color: ""}' \
                        "$temp_json" > "${temp_json}.tmp" && mv "${temp_json}.tmp" "$temp_json"
                 fi
                 current_host="$captured"
@@ -335,7 +339,7 @@ parse_config_to_json() {
                --arg p "$port" \
                --arg k "$key" \
                --arg j "$jump" \
-               '.[$h] = {host: $hn, user: $u, port: ($p | tonumber), key: $k, password: "", jump: $j, group: ""}' \
+               '.[$h] = {host: $hn, user: $u, port: ($p | tonumber), key: $k, password: "", jump: $j, group: "", bg_color: "", fg_color: ""}' \
                "$temp_json" > "${temp_json}.tmp" && mv "${temp_json}.tmp" "$temp_json"
         fi
     fi
@@ -362,6 +366,8 @@ sync_sessions() {
                 j=$(jq -r --arg k "$key" '.[$k].jump // empty' "$temp_json")
                 current_pw=$(jq -r --arg k "$key" '.[$k].password // ""' "$SESSIONS_FILE")
                 current_group=$(jq -r --arg k "$key" '.[$k].group // ""' "$SESSIONS_FILE")
+                current_bg_color=$(jq -r --arg k "$key" '.[$k].bg_color // ""' "$SESSIONS_FILE")
+                current_fg_color=$(jq -r --arg k "$key" '.[$k].fg_color // ""' "$SESSIONS_FILE")
                 echo "$(date): Updating session '$key' from config (preserving password and group)" >> "$LOG_FILE"
                 jq --arg h "$key" \
                    --arg hn "$hn" \
@@ -371,7 +377,9 @@ sync_sessions() {
                    --arg pw "$current_pw" \
                    --arg j "$j" \
                    --arg g "$current_group" \
-                   '.[$h] = {host: $hn, user: $u, port: ($p | tonumber), key: $ky, password: $pw, jump: $j, group: $g}' \
+                   --arg bg "$current_bg_color" \
+                   --arg fg "$current_fg_color" \
+                   '.[$h] = {host: $hn, user: $u, port: ($p | tonumber), key: $ky, password: $pw, jump: $j, group: $g, bg_color: $bg, fg_color: $fg}' \
                    "$SESSIONS_FILE" > "${SESSIONS_FILE}.tmp" && mv "${SESSIONS_FILE}.tmp" "$SESSIONS_FILE" || echo "Error updating $key" >> "$LOG_FILE"
             fi
         done <<< "$config_keys"
@@ -405,7 +413,7 @@ sync_sessions() {
            --arg p "22" \
            --arg k "~/.ssh/id_rsa" \
            --arg j "" \
-           '.[$h] = {host: $hn, user: $u, port: ($p | tonumber), key: $k, password: "", jump: $j, group: ""}' \
+           '.[$h] = {host: $hn, user: $u, port: ($p | tonumber), key: $k, password: "", jump: $j, group: "", bg_color: "", fg_color: ""}' \
            "$SESSIONS_FILE" > "${SESSIONS_FILE}.tmp" && mv "${SESSIONS_FILE}.tmp" "$SESSIONS_FILE"
     else
         local config_hosts=$(jq 'keys | length' "$temp_json" 2>/dev/null || echo 0)
@@ -782,7 +790,7 @@ if [[ ! -f "$SESSIONS_FILE" ]]; then
            --arg p "22" \
            --arg k "~/.ssh/id_rsa" \
            --arg j "" \
-           '.[$h] = {host: $hn, user: $u, port: ($p | tonumber), key: $k, password: "", jump: $j, group: ""}' \
+           '.[$h] = {host: $hn, user: $u, port: ($p | tonumber), key: $k, password: "", jump: $j, group: "", bg_color: "", fg_color: ""}' \
            "$SESSIONS_FILE" > "${SESSIONS_FILE}.tmp" && mv "${SESSIONS_FILE}.tmp" "$SESSIONS_FILE"
     fi
     echo "Created $SESSIONS_FILE based on ~/.ssh/config (or default sample)."
@@ -865,6 +873,8 @@ echo "$selected" | while read -r sel; do
     key=$(jq -r --arg key "$sel" '.[$key].key // empty' "$SESSIONS_FILE")
     password=$(jq -r --arg key "$sel" '.[$key].password // empty' "$SESSIONS_FILE")
     jump=$(jq -r --arg key "$sel" '.[$key].jump // empty' "$SESSIONS_FILE")
+    bg_color=$(jq -r --arg key "$sel" '.[$key].bg_color // empty' "$SESSIONS_FILE")
+    fg_color=$(jq -r --arg key "$sel" '.[$key].fg_color // empty' "$SESSIONS_FILE")
 
     # Expand key path if it contains ~
     if [[ -n "$key" && "$key" == ~* ]]; then
