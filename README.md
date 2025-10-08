@@ -73,8 +73,10 @@ source ~/.bashrc
 | `sshmx --install` / `sshmx -i` | Install script, create symlink, add tmux bindings, bash completion |
 | `sshmx --sync` / `sshmx -s`    | Sync `~/.ssh/sessions.json` with `~/.ssh/config` (preserves passwords/groups) |
 | `sshmx --groups` / `sshmx -g`  | Select and connect to all sessions in chosen group(s)             |
+| `sshmx --multiplex` / `sshmx -m` | Select active tmux windows (SSH sessions) and move them to a single synchronized window for multiplex commands |
 | `sshmx --export` / `sshmx -e`  | Export `sessions.json` to a backup file (prompts for filename)    |
 | `sshmx --import` / `sshmx -p`  | Import sessions from a JSON file (overwrites current, backs up existing) |
+| `sshmx --demultiplex` / `sshmx -d` | Restore panes from a multiplexed window back to separate windows |
 | `sshmx --help` / `sshmx -h`    | Show this help message                                           |
 
 ---
@@ -104,7 +106,7 @@ Or use the tmux shortcut: `Ctrl+b C-s`
 
 ### Use Groups
 
-Organize sessions by adding a `group` field when using `--add`.  
+Organize sessions by adding a `group` field when using `--add`.
 To connect to all in a group:
 
 ```bash
@@ -175,6 +177,46 @@ Resolves hostnames to IPs if possible. Logs details to `~/.ssh-session-manager.l
 
 ---
 
+### Multiplex Commands (Synchronized Input Across Hosts)
+
+Use `--multiplex` to select existing active SSH windows in your current tmux session and combine them into a single "Multiplex" window as horizontal panes with synchronized input enabled. This allows running the same command across all selected hosts simultaneously (tmux's `synchronize-panes` feature).
+
+```bash
+sshmx --multiplex
+```
+
+or
+
+```bash
+sshmx -m
+```
+
+## 🎨 Background / Foreground Color
+
+The script supports optional **background** and **foreground** color settings for each SSH session. When both `bg_color` and `fg_color` are defined in your `sessions.json`, `sshmx` will:
+
+- Create the tmux window with the specified colors.
+- Apply `window-style` and `window-active-style` so the window appears with those colors.
+
+Example entry in `sessions.json`:
+
+```json
+{
+  "myserver": {
+    "host": "example.com",
+    "user": "user",
+    "port": 22,
+    "key": "~/.ssh/id_rsa",
+    "bg_color": "black",
+    "fg_color": "green"
+  }
+}
+```
+
+> **Note:** Colors must be valid tmux color names or hex codes.
+
+---
+
 ### Export/Import sessions
 
 **Export:**
@@ -236,8 +278,19 @@ Backs up current `sessions.json`, then overwrites with the import file.
 * [x] On-demand sync with `~/.ssh/config` (`-s / --sync`)
 * [x] Advanced UI with [fzf preview](https://github.com/junegunn/fzf#preview-window)
 * [x] Grouped sessions (connect to multiple related servers at once with `-g`)
-* [ ] Multiplex commands (run the same command across selected hosts)
+* [x] Multiplex commands (run the same command across selected hosts)
 * [x] Export/import session configs (share with teammates via `-e`/`-p`)
+* [x] Custom background/foreground color to seperate envs
+
+---
+
+### Tmux Shortcuts
+| Shortcut     | Action                  |
+|--------------|-------------------------|
+| `Ctrl+b C-s` | Open session selector   |
+| `Ctrl+b C-g` | Open group selector     |
+| `Ctrl+b C-m` | Open multiplex selector |
+| `Ctrl+b C-q` | Demultiplex panes back to separate windows |
 
 ---
 
