@@ -972,7 +972,6 @@ EOF
 
     # Create new window in the appropriate session
     if [[ -n "$bg_color" && -n "$fg_color" ]]; then
-        echo "$bg_color and $fg_color"
         tmux new-window -t "$TMUX_SESSION" -n "$sel" "$ssh_cmd"
         # Then apply style options to the window
         tmux set-window-option -t "$TMUX_SESSION:$sel" window-style "fg=$fg_color,bg=$bg_color"
