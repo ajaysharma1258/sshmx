@@ -971,13 +971,28 @@ EOF
     fi
 
     # Create new window in the appropriate session
+
+    # Try to use the base name first
+    base_name="$sel"
+    window_name="$base_name"
+
+    # Check if a window with this name already exists
+    if tmux list-windows -t "$TMUX_SESSION" | grep -qE "^[0-9]+: $base_name"; then
+        # If it exists, find the next available suffix
+        idx=2
+        while tmux list-windows -t "$TMUX_SESSION" | grep -qE "^[0-9]+: ${base_name}-${idx}\b"; do
+            ((idx++))
+        done
+        window_name="${base_name}-${idx}"
+    fi
+
+    # Create the new window
+    tmux new-window -t "$TMUX_SESSION" -n "$window_name" "$ssh_cmd"
+
+    # Apply colors if provided
     if [[ -n "$bg_color" && -n "$fg_color" ]]; then
-        tmux new-window -t "$TMUX_SESSION" -n "$sel" "$ssh_cmd"
-        # Then apply style options to the window
-        tmux set-window-option -t "$TMUX_SESSION:$sel" window-style "fg=$fg_color,bg=$bg_color"
-        tmux set-window-option -t "$TMUX_SESSION:$sel" window-active-style "fg=$fg_color,bg=$bg_color"
-    else
-        tmux new-window -t "$TMUX_SESSION" -n "$sel" "$ssh_cmd"
+        tmux setw -t "$TMUX_SESSION:$window_name" window-style "fg=$fg_color,bg=$bg_color"
+        tmux setw -t "$TMUX_SESSION:$window_name" window-active-style "fg=$fg_color,bg=$bg_color"
     fi
 done
 
