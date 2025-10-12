@@ -178,7 +178,7 @@ remove_session() {
     # Select sessions to remove using fzf multi-select with preview
     to_remove=$(echo "$session_names" | fzf --multi --reverse \
   --prompt="Select SSH sessions: " \
-  --preview "jq -r '.\"{}\" | to_entries[] | \"\(.key): \(.value)\"' ~/.ssh/sessions.json" \
+  --preview "jq -r '.\"{}\" | to_entries[] | \"\(.key): \(.value)\"' $SESSIONS_FILE" \
   --preview-window=right:50:border
   )
 
