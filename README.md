@@ -13,13 +13,13 @@ It integrates with your existing `~/.ssh/config` or lets you add/remove sessions
   - New SSH sessions open in dedicated `tmux` windows
   - Popup window shortcuts (`Ctrl+b C-s` for sessions, `Ctrl+b C-g` for groups) to run `sshmx`
 - **Jump host (ProxyJump) support**
-- **Password and private key support** (passwords require `sshpass`)
+- **Password and private key support** (passwords are stored encrypted with GPG; `sshpass` is used for authentication when needed)
 - **Group support**: Organize and connect to all sessions in a group at once
 - **Export/Import sessions** for backups and sharing
 - **Optional colored output** with [chromaterm](https://github.com/hSaria/Chromaterm)
 - **Host IP resolution** using `getent` (if available)
 - **Self-installing** script – just run once and it sets itself up
-- **Sync with `~/.ssh/config`** preserving passwords and groups
+- **Sync with `~/.ssh/config`** preserving encrypted passwords and groups
 - **Logging** for debugging parsing issues
 
 ---
@@ -97,7 +97,7 @@ sshmx
 * Prompts you with an `fzf` selector of available sessions (multi-select, with preview of details)
 * Selected hosts open as **new windows** in your tmux session
 * If run outside tmux, a new session named `sshmx` is created
-* Supports keys, passwords (via `sshpass`), jump servers, and optional coloring with `chromaterm`
+* Supports keys, encrypted passwords (via `sshpass` after decryption), jump servers, and optional coloring with `chromaterm`
 * Hostnames are resolved to IPs if possible for faster connections
 
 Or use the tmux shortcut: `Ctrl+b C-s`
@@ -137,7 +137,7 @@ or
 sshmx -a
 ```
 
-Prompts for session name, hostname/IP, user (default: current), port (default: 22), private key (optional), password (optional, insecure), jump server (optional), group (optional).  
+Prompts for session name, hostname/IP, user (default: current), port (default: 22), private key (optional), password (optional, will be encrypted with GPG), jump server (optional), group (optional).
 Appends to `sessions.json`.
 
 ---
@@ -173,7 +173,7 @@ sshmx -s
 
 Parses `~/.ssh/config` for Host blocks (HostName, User, Port, IdentityFile, ProxyJump).  
 Updates or adds sessions in `~/.ssh/sessions.json`, preserving existing passwords and groups.  
-Resolves hostnames to IPs if possible. Logs details to `~/.ssh-session-manager.log`.
+Resolves hostnames to IPs if possible. Logs details to `~/.sshmx.log`.
 
 ---
 
@@ -257,15 +257,15 @@ Backs up current `sessions.json`, then overwrites with the import file.
 ---
 
 ## 📂 Files
-* `~/.ssh/sessions.json` → Stores your SSH sessions in JSON format: `{ "session_name": { "host": "...", "user": "...", "port": 22, "key": "...", "password": "...", "jump": "...", "group": "..." } }`
-* `~/.ssh-session-manager.log` → Log file with parsing and sync details
+* `~/.ssh/sessions.json` → Stores your SSH sessions in JSON format: `{ "session_name": { "host": "...", "user": "...", "port": 22, "key": "...", "password_encrypted": "...", "jump": "...", "group": "...", "bg_color": "", "fg_color": "" } }`
+* `~/.sshmx.log` → Log file with parsing and sync details
 * `~/.tmux.conf` → Key bindings automatically added here
 * `~/.local/bin/sshmx` → Symlink to the script for global usage
 
 ---
 
 ## ⚠️ Security Notes
-* Passwords are stored in plain text in `sessions.json` if you choose to use them  
+* Passwords are stored encrypted in `sessions.json` (field `password_encrypted`) when provided; they are encrypted with GPG. Plain‑text passwords are no longer used.
   → **Highly recommended** to use SSH keys instead (`IdentityFile` in config or key field)
 * Temporary configs for jump hosts are auto-cleaned (shredded) after use
 * Use export/import carefully; always review backups
@@ -274,7 +274,7 @@ Backs up current `sessions.json`, then overwrites with the import file.
 ---
 
 ## 🛠️ Roadmap / Ideas
-* [ ] Encrypted session store (e.g., with gpg or pass)
+* [x] Encrypted session store (e.g., with gpg or pass)
 * [x] On-demand sync with `~/.ssh/config` (`-s / --sync`)
 * [x] Advanced UI with [fzf preview](https://github.com/junegunn/fzf#preview-window)
 * [x] Grouped sessions (connect to multiple related servers at once with `-g`)
