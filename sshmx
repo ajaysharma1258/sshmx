@@ -685,18 +685,6 @@ demultiplex() {
     fi
 }
 
-# Function to preview session details
-preview_session() {
-    local session="$1"
-    jq -r --arg k "$session" '.[$k] | "Details for " + $k + ":\n  User: " + (.user // "N/A") + "\n  Host: " + (.host // "N/A") + "\n  Port: " + (.port | tostring // "22") + "\n  Group: " + (.group // "N/A") + (if .jump then "\n  Jump: " + .jump else "" end)' "$SESSIONS_FILE"
-}
-
-# Function to preview group sessions
-preview_group() {
-    local group="$1"
-    jq -r --arg g "$group" ' "Sessions in group " + $g + ":\n" + (to_entries | map(select(.value.group == $g) | "  - " + .key) | join("\n")) ' "$SESSIONS_FILE"
-}
-
 # Function to show help
 show_help() {
     cat << EOF
