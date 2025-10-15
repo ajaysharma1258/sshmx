@@ -1,14 +1,16 @@
 #!/bin/bash
 
 # Path to the sessions file
-SESSIONS_FILE="$HOME/.ssh/sessions.json"
+SESSIONS_FILE="$HOME/.sshmx/sessions.json"
 
-# Log file for parsing (moved to .ssh for consistency)
-LOG_FILE="$HOME/.ssh/sshmx.log"
+# Log file for parsing (moved to .sshmx for consistency)
+LOG_FILE="$HOME/.sshmx/sshmx.log"
 
 # Script name for self-reference
 SCRIPT_NAME="sshmx"
 SCRIPT_PATH="$(realpath "$0")"
+
+mkdir -p "$HOME/.sshmx"
 
 # Ensure GPG_TTY is set for pinentry
 if tty >/dev/null 2>&1; then
@@ -558,7 +560,7 @@ migrate_passwords() {
 multiplex() {
     local session="sshmx"
     local target_window="sync-input"
-    local MAP_FILE="${HOME}/.sshmx-mapping"
+    local MAP_FILE="${HOME}/.sshmx/sshmx-mapping"
 
     echo "$(date '+%F %T') [INFO] Starting multiplex" >> "$LOG_FILE"
 
@@ -635,7 +637,7 @@ multiplex() {
 demultiplex() {
     local session="sshmx"
     local target_window="sync-input"
-    local MAP_FILE="${HOME}/.sshmx-mapping"
+    local MAP_FILE="${HOME}/.sshmx/sshmx-mapping"
 
     echo "$(date '+%F %T') [INFO] Starting demultiplex" >> "$LOG_FILE"
 
@@ -711,7 +713,7 @@ Without options:
     Supports keys, encrypted passwords (GPG, use gpg-agent for caching), jump servers, chromaterm, groups.
     Tmux shortcuts: Ctrl+b C-s (sessions), C-g (groups), C-m (multiplex), C-q (demultiplex).
 
-Sessions stored in ~/.ssh/sessions.json. Passwords encrypted with GPG (configure ~/.gnupg/gpg-agent.conf, e.g., 'default-cache-ttl 3600'). Logs to ~/.ssh/sshmx.log.
+Sessions stored in ~/.sshmx/sessions.json. Passwords encrypted with GPG (configure ~/.gnupg/gpg-agent.conf, e.g., 'default-cache-ttl 3600'). Logs to ~/.sshmx/sshmx.log.
 
 Dependencies: jq, fzf, tmux, gpg (optional: sshpass, ct/chromaterm, getent).
 EOF
