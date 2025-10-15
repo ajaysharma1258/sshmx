@@ -21,6 +21,7 @@ It integrates with your existing `~/.ssh/config` or lets you add/remove sessions
 - **Self-installing** script – just run once and it sets itself up
 - **Sync with `~/.ssh/config`** preserving encrypted passwords and groups
 - **Logging** for debugging parsing issues
+- **Password migration** tool: convert old plaintext passwords to GPG-encrypted format
 
 ---
 
@@ -74,9 +75,10 @@ source ~/.bashrc
 | `sshmx --sync` / `sshmx -s`    | Sync `~/.ssh/sessions.json` with `~/.ssh/config` (preserves passwords/groups) |
 | `sshmx --groups` / `sshmx -g`  | Select and connect to all sessions in chosen group(s)             |
 | `sshmx --multiplex` / `sshmx -m` | Select active tmux windows (SSH sessions) and move them to a single synchronized window for multiplex commands |
+| `sshmx --demultiplex` / `sshmx -d` | Restore panes from a multiplexed window back to separate windows |
 | `sshmx --export` / `sshmx -e`  | Export `sessions.json` to a backup file (prompts for filename)    |
 | `sshmx --import` / `sshmx -p`  | Import sessions from a JSON file (overwrites current, backs up existing) |
-| `sshmx --demultiplex` / `sshmx -d` | Restore panes from a multiplexed window back to separate windows |
+| `sshmx --migrate-passwords` | Migrate old plaintext passwords in `sessions.json` to encrypted GPG format |
 | `sshmx --help` / `sshmx -h`    | Show this help message                                           |
 
 ---
@@ -177,9 +179,9 @@ Resolves hostnames to IPs if possible. Logs details to `~/.sshmx.log`.
 
 ---
 
-### Multiplex Commands (Synchronized Input Across Hosts)
+### Multiplex / Demultiplex Commands (Synchronized Input Across Hosts)
 
-Use `--multiplex` to select existing active SSH windows in your current tmux session and combine them into a single "Multiplex" window as horizontal panes with synchronized input enabled. This allows running the same command across all selected hosts simultaneously (tmux's `synchronize-panes` feature).
+Use **Multiplex** to combine multiple active SSH windows into a single tmux window with synchronized input enabled — allowing commands to be run on all selected hosts simultaneously.
 
 ```bash
 sshmx --multiplex
@@ -191,29 +193,19 @@ or
 sshmx -m
 ```
 
-## 🎨 Background / Foreground Color
+Then, to **Demultiplex** and restore each host’s pane back to a separate window:
 
-The script supports optional **background** and **foreground** color settings for each SSH session. When both `bg_color` and `fg_color` are defined in your `sessions.json`, `sshmx` will:
-
-- Create the tmux window with the specified colors.
-- Apply `window-style` and `window-active-style` so the window appears with those colors.
-
-Example entry in `sessions.json`:
-
-```json
-{
-  "myserver": {
-    "host": "example.com",
-    "user": "user",
-    "port": 22,
-    "key": "~/.ssh/id_rsa",
-    "bg_color": "black",
-    "fg_color": "green"
-  }
-}
+```bash
+sshmx --demultiplex
 ```
 
-> **Note:** Colors must be valid tmux color names or hex codes.
+or
+
+```bash
+sshmx -d
+```
+
+This workflow lets you easily switch between centralized control and individual host sessions.
 
 ---
 
@@ -245,6 +237,54 @@ sshmx -i /path/to/file.json
 ```
 
 Backs up current `sessions.json`, then overwrites with the import file.
+
+---
+
+### 🔐 Migrate Passwords
+
+
+If you previously stored plain-text passwords in `~/.ssh/sessions.json`, you can securely encrypt them using:
+
+
+```bash
+sshmx --migrate-passwords
+```
+
+
+This command:
+- Finds any `password` fields in `sessions.json`
+- Encrypts them using **GPG** and replaces them with `password_encrypted`
+- Deletes the old plain-text password entries
+- Exits immediately after completing the migration
+
+
+> ⚠️ This command should only be needed once after upgrading from older versions.
+
+---
+
+## 🎨 Background / Foreground Color
+
+The script supports optional **background** and **foreground** color settings for each SSH session. When both `bg_color` and `fg_color` are defined in your `sessions.json`, `sshmx` will:
+
+- Create the tmux window with the specified colors.
+- Apply `window-style` and `window-active-style` so the window appears with those colors.
+
+Example entry in `sessions.json`:
+
+```json
+{
+  "myserver": {
+    "host": "example.com",
+    "user": "user",
+    "port": 22,
+    "key": "~/.ssh/id_rsa",
+    "bg_color": "black",
+    "fg_color": "green"
+  }
+}
+```
+
+> **Note:** Colors must be valid tmux color names or hex codes.
 
 ---
 
