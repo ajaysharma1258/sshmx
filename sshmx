@@ -763,6 +763,10 @@ case "$1" in
         import_sessions "$@"
         exit 0
         ;;
+    --migrate-passwords)
+        migrate_passwords
+        exit 0;
+        ;; 
 esac
 
 # Auto-install if symlink doesn't exist
@@ -795,9 +799,6 @@ if [[ ! -f "$SESSIONS_FILE" ]]; then
     echo "$(date): Generated JSON content:" >> "$LOG_FILE"
     cat "$SESSIONS_FILE" >> "$LOG_FILE"
 fi
-
-# Migrate plain passwords
-migrate_passwords
 
 # Check dependencies
 if ! command -v jq &> /dev/null; then
