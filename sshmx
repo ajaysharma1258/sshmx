@@ -182,6 +182,7 @@ edit_session() {
     fi
     session_names=$(jq -r 'keys[]' "$SESSIONS_FILE")
     selected=$(echo "$session_names" | fzf --prompt="Select session to edit: " \
+      --reverse \
       --preview "jq -r '.\"{}\" | to_entries[] | \"\(.key): \(.value)\"' \"$SESSIONS_FILE\"" \
       --preview-window=right:50)
     if [[ -z "$selected" ]]; then
